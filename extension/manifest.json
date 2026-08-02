@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "SmartConsent Guard",
+  "version": "1.0.0",
+  "description": "AI-powered browser security system for phishing detection and T&C analysis",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "webNavigation",
+    "webRequest",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "SmartConsent Guard"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["warning/warning.html", "warning/warning.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,21 +1,38 @@
+# main.py
+# Purpose: FastAPI server for SmartConsent Guard
+# Author: Member A (Backend Integrator)
+# Endpoints: /health, /check-url, /analyze-policy, /simplify-policy
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 
-# ---------- Initialize FastAPI ----------
-app = FastAPI(title="SmartConsent Guard API", version="1.0.0")
+# Import Member B's modules
+from phishing_detector import detect
+from risk_engine import compute
 
-# ---------- CORS Configuration (CRITICAL for Chrome Extension) ----------
+# ✅ NEW: Import Member C's policy analyzer
+from policy_analyzer import analyze
+
+# Create FastAPI app
+app = FastAPI(
+    title="SmartConsent Guard API",
+    description="AI-powered browser security system for phishing detection and T&C analysis",
+    version="1.0.0"
+)
+
+# Configure CORS (allows Chrome extension to talk to this server)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins (for development)
+    allow_origins=["*"],  # Allow all origins (for development)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------- Request/Response Models ----------
+# --- Request/Response Models ---
+
 class URLRequest(BaseModel):
     url: str
 
@@ -32,70 +49,70 @@ class ClauseResult(BaseModel):
     confidence: float
 
 class AnalyzePolicyResponse(BaseModel):
-    risk_score: int
-    level: str  # LOW, MEDIUM, HIGH
+    ri_score: int
+    level: str
     explanation: str
     clauses: List[ClauseResult]
 
-# ---------- Endpoints ----------
+class HealthResponse(BaseModel):
+    status: str
+    version: str
+    components: dict
 
-@app.get("/health")
-def health_check():
-    """Simple health check to confirm the server is running."""
-    return {"status": "ok", "version": "1.0.0"}
+# --- Endpoints ---
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """
+    Health check endpoint to verify server is running.
+    """
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "components": {
+            "phishing_detector": "loaded",
+            "risk_engine": "loaded",
+            "policy_analyzer": "loaded"  # ✅ Changed from "pending" to "loaded"
+        }
+    }
 
 @app.post("/check-url", response_model=CheckURLResponse)
-def check_url(request: URLRequest):
+async def check_url(request: URLRequest):
     """
-    Analyzes a URL for phishing indicators.
-    MEMBER 2: Replace the dummy logic below with your detect() function.
+    Analyze a URL for phishing indicators.
+    Uses Member B's detect() function.
     """
-    # --- DUMMY LOGIC (To be replaced by Member 2) ---
-    # This is a placeholder so the frontend can start developing.
-    # Member 2 will import phishing_detector and call detect(url).
-    dummy_url = request.url.lower()
-    if "paypal" in dummy_url or "login" in dummy_url or ".tk" in dummy_url:
-        return CheckURLResponse(
-            is_phishing=True,
-            risk_score=85,
-            reasons=["Suspicious TLD", "Brand impersonation detected"]
-        )
-    else:
-        return CheckURLResponse(
-            is_phishing=False,
-            risk_score=5,
-            reasons=["No risk factors detected"]
-        )
+    result = detect(request.url)
+    return {
+        "is_phishing": result["is_phishing"],
+        "risk_score": result["risk_score"],
+        "reasons": result["reasons"]
+    }
 
 @app.post("/analyze-policy", response_model=AnalyzePolicyResponse)
-def analyze_policy(request: PolicyRequest):
+async def analyze_policy(request: PolicyRequest):
     """
-    Analyzes Terms & Conditions text for risky clauses.
-    MEMBER 3 & 2: Replace dummy logic with actual policy analysis + risk engine.
+    Analyze Terms & Conditions text for risky clauses.
+    ✅ Now uses Member C's policy_analyzer for real clause detection.
     """
-    # --- DUMMY LOGIC (To be replaced by Members 2 & 3) ---
-    # Member 3 will call policy_analyzer.analyze() to get clauses.
-    # Member 2 will call risk_engine.compute(clauses) to get the RI.
+    # ✅ REAL: Call Member C's analyze function
+    clauses = analyze(request.text)
     
-    dummy_text = request.text.lower()
-    clauses = []
+    # Call Member B's compute function with real clauses
+    result = compute(clauses)
     
-    if "sell" in dummy_text or "share" in dummy_text:
-        clauses.append(ClauseResult(type="Data Selling", confidence=0.95))
-    if "track" in dummy_text or "cookie" in dummy_text:
-        clauses.append(ClauseResult(type="Behavioral Tracking", confidence=0.85))
-    
-    if clauses:
-        return AnalyzePolicyResponse(
-            risk_score=72,
-            level="HIGH",
-            explanation="Risky clauses found. Your data may be shared or tracked.",
-            clauses=clauses
-        )
-    else:
-        return AnalyzePolicyResponse(
-            risk_score=15,
-            level="LOW",
-            explanation="No major risky clauses detected.",
-            clauses=[]
-        )
+    return {
+        "ri_score": result["ri_score"],
+        "level": result["level"],
+        "explanation": result["explanation"],
+        "clauses": clauses  # ✅ Return real clauses instead of dummy
+    }
+
+# --- Optional: Root endpoint for welcome message ---
+@app.get("/")
+async def root():
+    return {
+        "message": "Welcome to SmartConsent Guard API",
+        "docs": "/docs",
+        "health": "/health"
+    }

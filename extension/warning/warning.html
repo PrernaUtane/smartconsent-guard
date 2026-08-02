@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚠️ SmartConsent Guard - Warning</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: #0a0a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            padding: 40px;
+            text-align: center;
+        }
+        .warning-icon { font-size:72px; margin-bottom:16px; }
+        h1 { font-size:28px; font-weight:700; margin-bottom:8px; }
+        h1 .highlight { color:#e17055; }
+        .subtitle { color:rgba(255,255,255,0.5); font-size:14px; margin-bottom:24px; }
+        .score-box { background:rgba(225,112,85,0.1); border:1px solid rgba(225,112,85,0.2); border-radius:16px; padding:20px; margin-bottom:20px; }
+        .score-number { font-size:48px; font-weight:800; color:#e17055; }
+        .score-label { font-size:14px; color:rgba(255,255,255,0.5); }
+        .url-box { background:rgba(255,255,255,0.04); border-radius:12px; padding:14px; margin-bottom:20px; word-break:break-all; font-size:14px; color:rgba(255,255,255,0.7); }
+        .reasons { text-align:left; margin-bottom:24px; }
+        .reasons-title { font-size:13px; font-weight:600; color:rgba(255,255,255,0.5); margin-bottom:8px; }
+        .reason-item { padding:6px 12px; background:rgba(225,112,85,0.05); border-left:2px solid #e17055; border-radius:4px; margin-bottom:4px; font-size:13px; color:rgba(255,255,255,0.7); }
+        .buttons { display:flex; gap:12px; }
+        .btn { flex:1; padding:14px 24px; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+        .btn:hover { transform:scale(1.02); }
+        .btn-back { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.1); }
+        .btn-back:hover { background:rgba(255,255,255,0.15); }
+        .btn-anyway { background:rgba(225,112,85,0.2); color:#e17055; border:1px solid rgba(225,112,85,0.2); }
+        .btn-anyway:hover { background:rgba(225,112,85,0.3); }
+        .footer { margin-top:20px; font-size:11px; color:rgba(255,255,255,0.15); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="warning-icon">🚨</div>
+    <h1>⚠️ <span class="highlight">Phishing</span> Detected</h1>
+    <p class="subtitle">SmartConsent Guard blocked this site to protect you</p>
+    <div class="score-box"><div class="score-number" id="scoreDisplay">0</div><div class="score-label">Risk Score</div></div>
+    <div class="url-box" id="urlDisplay">Loading...</div>
+    <div class="reasons"><div class="reasons-title">🔍 Why this site was blocked:</div><div id="reasonsList"></div></div>
+    <div class="buttons">
+        <button class="btn btn-back" id="goBackBtn">⬅️ Go Back</button>
+        <button class="btn btn-anyway" id="enterAnywayBtn">⚠️ Enter Anyway</button>
+    </div>
+    <div class="footer">🛡️ SmartConsent Guard • AI-Powered Protection</div>
+</div>
+<script src="warning.js"></script>
+</body>
+</html>

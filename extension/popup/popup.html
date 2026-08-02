@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartConsent Guard</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="container">
+    <header class="header">
+        <div class="header-left"><span class="logo-icon">🛡️</span><span class="logo-text">SmartConsent</span></div>
+        <div class="header-right"><span class="badge" id="riskBadge">LOW</span></div>
+    </header>
+    <div class="site-info">
+        <span class="site-label">Current Site</span>
+        <span class="site-url" id="siteUrl">loading...</span>
+    </div>
+    <div class="gauge-container">
+        <div class="gauge-ring">
+            <svg viewBox="0 0 120 120" class="ring-svg">
+                <circle cx="60" cy="60" r="54" class="ring-bg"/>
+                <circle cx="60" cy="60" r="54" class="ring-fg" id="riskRing"/>
+            </svg>
+            <div class="gauge-center">
+                <span class="gauge-score" id="riskScore">-</span>
+                <span class="gauge-label">RISK</span>
+            </div>
+        </div>
+        <div class="gauge-level" id="riskLevel">—</div>
+    </div>
+    <div class="explanation-box">
+        <p class="explanation-text" id="explanationText">Analyzing site...</p>
+    </div>
+    <div class="clauses-section">
+        <div class="section-header">
+            <span class="section-title">📋 Detected Clauses</span>
+            <span class="section-badge" id="clauseCount">0</span>
+        </div>
+        <div class="clauses-list" id="clausesList">
+            <div class="clause-empty">No risky clauses detected</div>
+        </div>
+    </div>
+    <div class="actions">
+        <button class="btn btn-allow" id="allowBtn">✅ Allow Site</button>
+        <button class="btn btn-block" id="blockBtn">🚫 Block Site</button>
+    </div>
+    <footer class="footer">
+        <span class="footer-text">🔄 Powered by AI</span>
+        <span class="footer-version">v1.0.0</span>
+    </footer>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

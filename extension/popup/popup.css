@@ -1,0 +1,49 @@
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+    width:400px; min-height:500px;
+    background: linear-gradient(145deg, #0a0a1a 0%, #1a1a2e 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #ffffff; padding:16px;
+}
+.container { display:flex; flex-direction:column; gap:14px; }
+.header { display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.header-left { display:flex; align-items:center; gap:8px; }
+.logo-icon { font-size:20px; }
+.logo-text { font-size:16px; font-weight:700; background:linear-gradient(135deg, #6c5ce7, #a29bfe); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.badge { font-size:11px; font-weight:600; padding:4px 12px; border-radius:20px; text-transform:uppercase; letter-spacing:0.5px; }
+.badge-low { background:rgba(0,184,148,0.2); color:#00b894; }
+.badge-medium { background:rgba(253,203,110,0.2); color:#fdcb6e; }
+.badge-high { background:rgba(225,112,85,0.2); color:#e17055; }
+.site-info { display:flex; flex-direction:column; gap:2px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:10px; border:1px solid rgba(255,255,255,0.06); }
+.site-label { font-size:10px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:0.5px; }
+.site-url { font-size:13px; color:rgba(255,255,255,0.8); word-break:break-all; }
+.gauge-container { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 0; }
+.gauge-ring { position:relative; width:120px; height:120px; }
+.ring-svg { transform:rotate(-90deg); }
+.ring-bg { fill:none; stroke:rgba(255,255,255,0.06); stroke-width:8; }
+.ring-fg { fill:none; stroke:#6c5ce7; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset 1.5s ease; stroke-dasharray:339.292; stroke-dashoffset:339.292; }
+.gauge-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; }
+.gauge-score { font-size:32px; font-weight:700; display:block; line-height:1; }
+.gauge-label { font-size:10px; color:rgba(255,255,255,0.4); letter-spacing:1px; text-transform:uppercase; }
+.gauge-level { font-size:14px; font-weight:600; margin-top:8px; text-transform:uppercase; letter-spacing:1px; }
+.explanation-box { padding:12px 14px; background:rgba(255,255,255,0.04); border-radius:10px; border-left:3px solid #6c5ce7; }
+.explanation-text { font-size:13px; color:rgba(255,255,255,0.7); line-height:1.5; }
+.clauses-section { display:flex; flex-direction:column; gap:8px; }
+.section-header { display:flex; justify-content:space-between; align-items:center; }
+.section-title { font-size:13px; font-weight:600; }
+.section-badge { font-size:11px; font-weight:600; padding:2px 10px; border-radius:12px; background:rgba(108,92,231,0.2); color:#a29bfe; }
+.clauses-list { display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto; }
+.clause-item { display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.05); }
+.clause-name { font-size:12px; color:rgba(255,255,255,0.8); }
+.clause-confidence { font-size:11px; font-weight:600; color:#00b894; }
+.clause-empty { font-size:12px; color:rgba(255,255,255,0.3); text-align:center; padding:12px 0; }
+.actions { display:flex; gap:10px; padding-top:4px; }
+.btn { flex:1; padding:10px 16px; border:none; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+.btn:hover { transform:scale(1.02); }
+.btn-allow { background:rgba(0,184,148,0.15); color:#00b894; border:1px solid rgba(0,184,148,0.2); }
+.btn-allow:hover { background:rgba(0,184,148,0.25); }
+.btn-block { background:rgba(225,112,85,0.15); color:#e17055; border:1px solid rgba(225,112,85,0.2); }
+.btn-block:hover { background:rgba(225,112,85,0.25); }
+.footer { display:flex; justify-content:space-between; padding-top:10px; border-top:1px solid rgba(255,255,255,0.04); }
+.footer-text { font-size:10px; color:rgba(255,255,255,0.2); }
+.footer-version { font-size:10px; color:rgba(255,255,255,0.15); }
