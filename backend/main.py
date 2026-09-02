@@ -1,118 +1,432 @@
-# main.py
-# Purpose: FastAPI server for SmartConsent Guard
-# Author: Member A (Backend Integrator)
-# Endpoints: /health, /check-url, /analyze-policy, /simplify-policy
+"""
+main.py — SmartConsent Guard FastAPI backend server.
 
-from fastapi import FastAPI
+Endpoints:
+    GET  /                            → Welcome message
+    GET  /health                      → Server health check
+    POST /check-url                   → Phishing / suspicious URL analysis
+    POST /analyze-policy              → Terms & Conditions NLP risk analysis
+    POST /check-google-safebrowsing   → Google Safe Browsing API check
+    POST /check-virustotal            → VirusTotal API check (70+ vendors)
+"""
+
+import logging
+import time
+from contextlib import asynccontextmanager
+
+import requests
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, HttpUrl, field_validator
 
-# Import Member B's modules
+# Import functions directly (not classes)
 from phishing_detector import detect
-from risk_engine import compute
-
-# ✅ NEW: Import Member C's policy analyzer
 from policy_analyzer import analyze
 
-# Create FastAPI app
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+)
+logger = logging.getLogger("smartconsent")
+
+
+# ---------------------------------------------------------------------------
+# App initialisation
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting SmartConsent Guard backend …")
+    logger.info("PhishingDetector ready.")  # Using function directly
+    logger.info("PolicyAnalyzer ready.")    # Using function directly
+    yield
+    logger.info("Shutting down SmartConsent Guard backend.")
+
+
 app = FastAPI(
     title="SmartConsent Guard API",
-    description="AI-powered browser security system for phishing detection and T&C analysis",
-    version="1.0.0"
+    description=(
+        "AI-powered browser security backend. "
+        "Detects phishing URLs and analyzes Terms & Conditions for risky clauses. "
+        "Integrates Google Safe Browsing and VirusTotal for enhanced detection."
+    ),
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
-# Configure CORS (allows Chrome extension to talk to this server)
+# Allow requests from the Chrome extension (chrome-extension://* origins)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (for development)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Request/Response Models ---
 
-class URLRequest(BaseModel):
+# ---------------------------------------------------------------------------
+# Request / Response models
+# ---------------------------------------------------------------------------
+
+class UrlRequest(BaseModel):
     url: str
+
+    @field_validator("url")
+    @classmethod
+    def url_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("url must not be empty")
+        return v.strip()
+
 
 class PolicyRequest(BaseModel):
     text: str
 
-class CheckURLResponse(BaseModel):
-    is_phishing: bool
-    risk_score: int
-    reasons: List[str]
+    @field_validator("text")
+    @classmethod
+    def text_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("text must not be empty")
+        return v.strip()
 
-class ClauseResult(BaseModel):
-    type: str
-    confidence: float
 
-class AnalyzePolicyResponse(BaseModel):
-    ri_score: int
-    level: str
-    explanation: str
-    clauses: List[ClauseResult]
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
-class HealthResponse(BaseModel):
-    status: str
-    version: str
-    components: dict
-
-# --- Endpoints ---
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """
-    Health check endpoint to verify server is running.
-    """
-    return {
-        "status": "ok",
-        "version": "1.0.0",
-        "components": {
-            "phishing_detector": "loaded",
-            "risk_engine": "loaded",
-            "policy_analyzer": "loaded"  # ✅ Changed from "pending" to "loaded"
-        }
-    }
-
-@app.post("/check-url", response_model=CheckURLResponse)
-async def check_url(request: URLRequest):
-    """
-    Analyze a URL for phishing indicators.
-    Uses Member B's detect() function.
-    """
-    result = detect(request.url)
-    return {
-        "is_phishing": result["is_phishing"],
-        "risk_score": result["risk_score"],
-        "reasons": result["reasons"]
-    }
-
-@app.post("/analyze-policy", response_model=AnalyzePolicyResponse)
-async def analyze_policy(request: PolicyRequest):
-    """
-    Analyze Terms & Conditions text for risky clauses.
-    ✅ Now uses Member C's policy_analyzer for real clause detection.
-    """
-    # ✅ REAL: Call Member C's analyze function
-    clauses = analyze(request.text)
-    
-    # Call Member B's compute function with real clauses
-    result = compute(clauses)
-    
-    return {
-        "ri_score": result["ri_score"],
-        "level": result["level"],
-        "explanation": result["explanation"],
-        "clauses": clauses  # ✅ Return real clauses instead of dummy
-    }
-
-# --- Optional: Root endpoint for welcome message ---
 @app.get("/")
 async def root():
+    """Welcome message with links to documentation."""
     return {
         "message": "Welcome to SmartConsent Guard API",
         "docs": "/docs",
         "health": "/health"
     }
+
+
+@app.get("/health", tags=["system"])
+def health_check():
+    """Returns server status and loaded component info."""
+    return {
+        "status": "ok",
+        "service": "SmartConsent Guard",
+        "version": "1.0.0",
+        "components": {
+            "phishing_detector": True,  # Always loaded (function)
+            "policy_analyzer": True,    # Always loaded (function)
+            "nlp_model_loaded": False,  # Optional NLI model not loaded
+        },
+    }
+
+
+@app.post("/check-url", tags=["phishing"])
+def check_url(request: UrlRequest):
+    """
+    Analyse a URL for phishing / suspicious domain patterns.
+
+    Returns:
+        is_phishing (bool), risk_score (0–100), reasons (list[str])
+    """
+    logger.info(f"Checking URL: {request.url}")
+    result = detect(request.url)
+    logger.info(
+        f"URL check result — score={result['risk_score']}, "
+        f"phishing={result['is_phishing']}"
+    )
+    return result
+
+
+@app.post("/analyze-policy", tags=["policy"])
+def analyze_policy(request: PolicyRequest):
+    """
+    Analyze Terms & Conditions / Privacy Policy text for risky clauses.
+
+    Returns:
+        risk_score, level, clauses (with confidence), explanation
+    """
+    text_preview = request.text[:80].replace("\n", " ")
+    logger.info(f"Analyzing policy text: '{text_preview}…'")
+
+    result = analyze(request.text)
+    logger.info(
+        f"Policy analysis result — score={result['risk_score']}, "
+        f"level={result['level']}, clauses={len(result['clauses'])}"
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Google Safe Browsing API Endpoint
+# ---------------------------------------------------------------------------
+
+# IMPORTANT: Replace this with your actual Google Safe Browsing API key
+# Get it from: https://console.cloud.google.com/apis/library/safebrowsing.googleapis.com
+GOOGLE_SAFE_BROWSING_API_KEY = "AIzaSyCXwganf-i6QsNqaTnN7GzxI6WNbJa37jA"
+
+
+@app.post("/check-google-safebrowsing", tags=["phishing", "security"])
+def check_google_safebrowsing(request: UrlRequest):
+    """
+    Check URL against Google Safe Browsing API.
+
+    Returns whether Google flags it as malicious, along with threat type.
+
+    Returns:
+        url (str), is_malicious (bool), threat_type (str), message (str)
+    """
+    url = request.url
+    api_key = GOOGLE_SAFE_BROWSING_API_KEY
+
+    # If no API key is configured, return a clear message
+    if api_key == "YOUR_GOOGLE_SAFE_BROWSING_API_KEY" or not api_key:
+        logger.warning("Google Safe Browsing API key not configured.")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "threat_type": None,
+            "message": "Google Safe Browsing API key not configured. Please set your API key in main.py."
+        }
+
+    # Google Safe Browsing API endpoint
+    gsb_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={api_key}"
+
+    # Request payload
+    payload = {
+        "client": {
+            "clientId": "smartconsent-guard",
+            "clientVersion": "1.0.0"
+        },
+        "threatInfo": {
+            "threatTypes": [
+                "MALWARE",
+                "SOCIAL_ENGINEERING",
+                "UNWANTED_SOFTWARE",
+                "POTENTIALLY_HARMFUL_APPLICATION"
+            ],
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": url}]
+        }
+    }
+
+    try:
+        logger.info(f"Checking Google Safe Browsing for: {url}")
+        response = requests.post(gsb_url, json=payload, timeout=15)
+
+        if response.status_code == 200:
+            data = response.json()
+            # If there's a 'matches' field, Google flagged it
+            if "matches" in data and data["matches"]:
+                threat_type = data["matches"][0].get("threatType", "Unknown")
+                logger.info(f"Google Safe Browsing flagged URL as: {threat_type}")
+                return {
+                    "url": url,
+                    "is_malicious": True,
+                    "threat_type": threat_type,
+                    "message": f"Google Safe Browsing flagged this URL as {threat_type}"
+                }
+            else:
+                logger.info("Google Safe Browsing did not flag this URL")
+                return {
+                    "url": url,
+                    "is_malicious": False,
+                    "threat_type": None,
+                    "message": "Google Safe Browsing did not flag this URL"
+                }
+        elif response.status_code == 403:
+            logger.error("Google Safe Browsing API key is invalid or has insufficient permissions.")
+            return {
+                "url": url,
+                "is_malicious": False,
+                "threat_type": None,
+                "message": "API key invalid or has insufficient permissions. Please check your Google Cloud Console."
+            }
+        elif response.status_code == 429:
+            logger.warning("Google Safe Browsing API rate limit exceeded.")
+            return {
+                "url": url,
+                "is_malicious": False,
+                "threat_type": None,
+                "message": "Rate limit exceeded. Please try again later."
+            }
+        else:
+            logger.error(f"Google Safe Browsing API error: {response.status_code}")
+            return {
+                "url": url,
+                "is_malicious": False,
+                "threat_type": None,
+                "message": f"Google Safe Browsing API error: {response.status_code}"
+            }
+    except requests.exceptions.Timeout:
+        logger.error("Google Safe Browsing API request timed out.")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "threat_type": None,
+            "message": "Request timed out. Please try again."
+        }
+    except requests.exceptions.ConnectionError:
+        logger.error("Google Safe Browsing API connection error.")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "threat_type": None,
+            "message": "Connection error. Please check your internet connection."
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error in Google Safe Browsing check: {str(e)}")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "threat_type": None,
+            "message": f"Unexpected error: {str(e)}"
+        }
+
+
+# ---------------------------------------------------------------------------
+# VirusTotal API Endpoint
+# ---------------------------------------------------------------------------
+
+# IMPORTANT: Replace this with your actual VirusTotal API key
+# Get it from: https://www.virustotal.com/gui/join-us
+VIRUSTOTAL_API_KEY = "2b11b6f19219c02d957d6360390db1f07976549fdb111dd2d6585d5db1896742"
+
+
+@app.post("/check-virustotal", tags=["phishing", "security"])
+def check_virustotal(request: UrlRequest):
+    """
+    Check URL against VirusTotal's 70+ security vendors.
+
+    Returns whether any vendors flagged it as malicious, along with the count.
+
+    Returns:
+        url (str), is_malicious (bool), malicious_vendors (int),
+        total_vendors (int), message (str)
+    """
+    url = request.url
+    api_key = VIRUSTOTAL_API_KEY
+
+    # If no API key is configured, return a clear message
+    if api_key == "YOUR_VIRUSTOTAL_API_KEY" or not api_key:
+        logger.warning("VirusTotal API key not configured.")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "malicious_vendors": 0,
+            "total_vendors": 0,
+            "message": "VirusTotal API key not configured. Please set your API key in main.py."
+        }
+
+    try:
+        logger.info(f"Checking VirusTotal for: {url}")
+
+        # --- Step 1: Submit URL for analysis ---
+        scan_response = requests.post(
+            'https://www.virustotal.com/api/v3/urls',
+            headers={'x-apikey': api_key},
+            data={'url': url},
+            timeout=10
+        )
+
+        if scan_response.status_code != 200:
+            logger.error(f"VirusTotal scan API error: {scan_response.status_code}")
+            return {
+                "url": url,
+                "is_malicious": False,
+                "malicious_vendors": 0,
+                "total_vendors": 0,
+                "message": f"VirusTotal API error: {scan_response.status_code}"
+            }
+
+        scan_data = scan_response.json()
+        analysis_id = scan_data['data']['id']
+
+        # --- Step 2: Wait a few seconds for results ---
+        time.sleep(3)
+
+        # --- Step 3: Get analysis results ---
+        result_response = requests.get(
+            f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
+            headers={'x-apikey': api_key},
+            timeout=10
+        )
+
+        if result_response.status_code != 200:
+            logger.error(f"VirusTotal results API error: {result_response.status_code}")
+            return {
+                "url": url,
+                "is_malicious": False,
+                "malicious_vendors": 0,
+                "total_vendors": 0,
+                "message": f"VirusTotal results error: {result_response.status_code}"
+            }
+
+        result_data = result_response.json()
+        stats = result_data['data']['attributes']['stats']
+
+        malicious_count = stats.get('malicious', 0)
+        suspicious_count = stats.get('suspicious', 0)
+        harmless_count = stats.get('harmless', 0)
+        undetected_count = stats.get('undetected', 0)
+
+        total_vendors = malicious_count + suspicious_count + harmless_count + undetected_count
+        is_malicious = malicious_count > 2  # Flag if more than 2 vendors say it's malicious
+
+        logger.info(f"VirusTotal results: {malicious_count} malicious, {suspicious_count} suspicious out of {total_vendors} vendors")
+
+        return {
+            "url": url,
+            "is_malicious": is_malicious,
+            "malicious_vendors": malicious_count,
+            "suspicious_vendors": suspicious_count,
+            "total_vendors": total_vendors,
+            "message": f"{malicious_count} out of {total_vendors} vendors flagged this URL as malicious"
+        }
+
+    except requests.exceptions.Timeout:
+        logger.error("VirusTotal API request timed out.")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "malicious_vendors": 0,
+            "total_vendors": 0,
+            "message": "Request timed out. Please try again."
+        }
+    except requests.exceptions.ConnectionError:
+        logger.error("VirusTotal API connection error.")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "malicious_vendors": 0,
+            "total_vendors": 0,
+            "message": "Connection error. Please check your internet connection."
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error in VirusTotal check: {str(e)}")
+        return {
+            "url": url,
+            "is_malicious": False,
+            "malicious_vendors": 0,
+            "total_vendors": 0,
+            "message": f"Unexpected error: {str(e)}"
+        }
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        log_level="info",
+    )
