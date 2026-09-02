@@ -11,9 +11,14 @@ Endpoints:
     POST /check-virustotal            → VirusTotal API check (70+ vendors)
 """
 
+import os
 import logging
 import time
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -205,8 +210,12 @@ def analyze_policy_enhanced(request: PolicyRequest):
 
     try:
         if NLI_AVAILABLE:
-            # Use NLI service
-            clauses = analyze_with_nli(request.text)
+            # Use NLI service - handle both list and dict return types
+            nli_result = analyze_with_nli(request.text)
+            if isinstance(nli_result, dict):
+                clauses = nli_result.get("clauses", [])
+            else:
+                clauses = nli_result
             logger.info(f"NLI analysis complete — {len(clauses)} clauses detected")
         else:
             # Fallback to keyword analysis
@@ -242,9 +251,10 @@ def analyze_policy_enhanced(request: PolicyRequest):
 # Google Safe Browsing API Endpoint
 # ---------------------------------------------------------------------------
 
-# IMPORTANT: Replace this with your actual Google Safe Browsing API key
-# Get it from: https://console.cloud.google.com/apis/library/safebrowsing.googleapis.com
-GOOGLE_SAFE_BROWSING_API_KEY = "AIzaSyCXwganf-i6QsNqaTnN7GzxI6WNbJa37jA"
+# ✅ Load API key from environment variable
+GOOGLE_SAFE_BROWSING_API_KEY = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
+if not GOOGLE_SAFE_BROWSING_API_KEY:
+    logger.warning("Google Safe Browsing API key not set in .env file")
 
 
 @app.post("/check-google-safebrowsing", tags=["phishing", "security"])
@@ -261,13 +271,13 @@ def check_google_safebrowsing(request: UrlRequest):
     api_key = GOOGLE_SAFE_BROWSING_API_KEY
 
     # If no API key is configured, return a clear message
-    if api_key == "YOUR_GOOGLE_SAFE_BROWSING_API_KEY" or not api_key:
+    if not api_key:
         logger.warning("Google Safe Browsing API key not configured.")
         return {
             "url": url,
             "is_malicious": False,
             "threat_type": None,
-            "message": "Google Safe Browsing API key not configured. Please set your API key in main.py."
+            "message": "Google Safe Browsing API key not configured. Please set GOOGLE_SAFE_BROWSING_API_KEY in .env file."
         }
 
     # Google Safe Browsing API endpoint
@@ -370,9 +380,10 @@ def check_google_safebrowsing(request: UrlRequest):
 # VirusTotal API Endpoint
 # ---------------------------------------------------------------------------
 
-# IMPORTANT: Replace this with your actual VirusTotal API key
-# Get it from: https://www.virustotal.com/gui/join-us
-VIRUSTOTAL_API_KEY = "2b11b6f19219c02d957d6360390db1f07976549fdb111dd2d6585d5db1896742"
+# ✅ Load API key from environment variable
+VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY", "")
+if not VIRUSTOTAL_API_KEY:
+    logger.warning("VirusTotal API key not set in .env file")
 
 
 @app.post("/check-virustotal", tags=["phishing", "security"])
@@ -390,14 +401,14 @@ def check_virustotal(request: UrlRequest):
     api_key = VIRUSTOTAL_API_KEY
 
     # If no API key is configured, return a clear message
-    if api_key == "YOUR_VIRUSTOTAL_API_KEY" or not api_key:
+    if not api_key:
         logger.warning("VirusTotal API key not configured.")
         return {
             "url": url,
             "is_malicious": False,
             "malicious_vendors": 0,
             "total_vendors": 0,
-            "message": "VirusTotal API key not configured. Please set your API key in main.py."
+            "message": "VirusTotal API key not configured. Please set VIRUSTOTAL_API_KEY in .env file."
         }
 
     try:

@@ -8,7 +8,8 @@
  * - Multi-layered security: Heuristic → Google Safe Browsing → VirusTotal
  */
 
-const BACKEND_URL = "http://localhost:8000";
+// ✅ FIXED: Use 127.0.0.1 instead of localhost
+const BACKEND_URL = "http://127.0.0.1:8000";
 const RISK_THRESHOLD = 60;
 
 // ─────────────────────────────────────────────────────────────────────────────

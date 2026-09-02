@@ -19,3 +19,5 @@ Thumbs.db
 # Chrome extension generated files
 *.crx
 *.pem
+# Environment variables
+.env

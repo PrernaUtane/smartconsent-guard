@@ -1,4 +1,4 @@
-// popup.js – Final version with error suppression
+// popup.js – Final version with error suppression and enhanced NLI endpoint
 const BACKEND_URL = 'http://127.0.0.1:8000';
 const CIRCUMFERENCE = 339.292;
 
@@ -60,13 +60,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentDomain = new URL(tab.url).hostname;
         siteUrl.textContent = currentDomain;
 
+        // Step 1: Check for phishing
         const phishingResult = await checkUrl(currentUrl);
         updatePhishingUI(phishingResult);
 
+        // Step 2: Extract policy text from the page
         const policyText = await getPolicyText(tab.id);
-        if (policyText) {
-            const policyResult = await analyzePolicy(policyText);
-            updatePolicyUI(policyResult);
+        if (policyText && policyText.length > 50) {
+            // Step 3: Analyze policy using enhanced NLI endpoint
+            try {
+                const policyResult = await analyzePolicyEnhanced(policyText);
+                updatePolicyUI(policyResult);
+            } catch (error) {
+                console.error('Enhanced policy analysis failed, trying fallback:', error);
+                // Fallback to regular keyword analysis
+                const policyResult = await analyzePolicy(policyText);
+                updatePolicyUI(policyResult);
+            }
         } else {
             clausesList.innerHTML = '<div class="clause-empty">No policy text found on this page</div>';
         }
@@ -90,6 +100,10 @@ function showInternalPageMessage() {
 }
 
 // --- API Calls ---
+
+/**
+ * Check URL for phishing using heuristic engine
+ */
 async function checkUrl(url) {
     const response = await fetch(`${BACKEND_URL}/check-url`, {
         method: 'POST',
@@ -100,6 +114,22 @@ async function checkUrl(url) {
     return response.json();
 }
 
+/**
+ * Analyze policy using NLI-enhanced endpoint (AI-powered)
+ */
+async function analyzePolicyEnhanced(text) {
+    const response = await fetch(`${BACKEND_URL}/analyze-policy-enhanced`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+    });
+    if (!response.ok) throw new Error('Failed to analyze policy with NLI');
+    return response.json();
+}
+
+/**
+ * Analyze policy using keyword-based endpoint (fallback)
+ */
 async function analyzePolicy(text) {
     const response = await fetch(`${BACKEND_URL}/analyze-policy`, {
         method: 'POST',
@@ -111,6 +141,7 @@ async function analyzePolicy(text) {
 }
 
 // --- UI Updates ---
+
 function updatePhishingUI(result) {
     const score = result.risk_score;
     riskScore.textContent = score;
@@ -154,6 +185,10 @@ function updatePolicyUI(result) {
     const clauses = result.clauses || [];
     clauseCount.textContent = clauses.length;
 
+    // Show method used (if available)
+    const method = result.method || 'keyword';
+    console.log(`Policy analysis method: ${method}`);
+
     if (clauses.length === 0) {
         clausesList.innerHTML = '<div class="clause-empty">No risky clauses detected</div>';
         return;
@@ -178,6 +213,7 @@ function updatePolicyUI(result) {
 }
 
 // --- Utility Functions ---
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -199,7 +235,10 @@ async function getPolicyText(tabId) {
             {
                 target: { tabId },
                 func: () => {
-                    const selectors = ['[id*="privacy" i]', '[id*="terms" i]', '[id*="policy" i]', '[class*="privacy" i]', '[class*="terms" i]'];
+                    const selectors = [
+                        '[id*="privacy" i]', '[id*="terms" i]', '[id*="policy" i]',
+                        '[class*="privacy" i]', '[class*="terms" i]'
+                    ];
                     let text = '';
                     for (const selector of selectors) {
                         const els = document.querySelectorAll(selector);
@@ -208,6 +247,7 @@ async function getPolicyText(tabId) {
                             if (t && t.length > 100) text += t + '\n';
                         }
                     }
+                    // If no specific section found, check URL for policy pages
                     if (!text && /\/privacy|\/terms|\/legal|\/policy/.test(window.location.href)) {
                         text = document.body?.textContent?.trim() || '';
                     }
@@ -227,6 +267,7 @@ async function getPolicyText(tabId) {
 }
 
 // --- Button Handlers ---
+
 allowBtn.addEventListener('click', async () => {
     if (!currentDomain) return;
     try {
