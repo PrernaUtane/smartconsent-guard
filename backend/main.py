@@ -3,10 +3,10 @@ main.py — SmartConsent Guard FastAPI backend server.
 
 Endpoints:
     GET  /                            → Welcome message
-    GET  /health                      → Server health check
+    GET  /health                      → Server health check (with real NLI status)
     POST /check-url                   → Phishing / suspicious URL analysis
     POST /analyze-policy              → Terms & Conditions NLP risk analysis
-    POST /analyze-policy-enhanced     → Enhanced T&C analysis with NLI (NEW)
+    POST /analyze-policy-enhanced     → Enhanced T&C analysis with NLI
     POST /check-google-safebrowsing   → Google Safe Browsing API check
     POST /check-virustotal            → VirusTotal API check (70+ vendors)
 """
@@ -32,7 +32,7 @@ from risk_engine import compute
 
 # Try to import NLI service (optional)
 try:
-    from nli_service import analyze_with_nli
+    from nli_service import analyze_with_nli, get_nli_service
     NLI_AVAILABLE = True
     print("[main.py] NLI service loaded successfully")
 except ImportError:
@@ -129,6 +129,15 @@ async def root():
 @app.get("/health", tags=["system"])
 def health_check():
     """Returns server status and loaded component info."""
+    # ✅ Check if NLI is actually loaded
+    nli_loaded = False
+    try:
+        from nli_service import get_nli_service
+        service = get_nli_service()
+        nli_loaded = service.use_nli
+    except:
+        pass
+    
     return {
         "status": "ok",
         "service": "SmartConsent Guard",
@@ -137,7 +146,7 @@ def health_check():
             "phishing_detector": True,
             "policy_analyzer": True,
             "nli_available": NLI_AVAILABLE,
-            "nlp_model_loaded": False,
+            "nlp_model_loaded": nli_loaded,  # ✅ Now shows real status
         },
     }
 
@@ -208,25 +217,23 @@ def analyze_policy_enhanced(request: PolicyRequest):
     text_preview = request.text[:80].replace("\n", " ")
     logger.info(f"Analyzing policy text (enhanced): '{text_preview}…'")
 
+    method = "keyword"
     try:
         if NLI_AVAILABLE:
-            # Use NLI service - handle both list and dict return types
+            # ✅ Use NLI service - returns a dict with 'clauses' key
             nli_result = analyze_with_nli(request.text)
-            if isinstance(nli_result, dict):
-                clauses = nli_result.get("clauses", [])
-            else:
-                clauses = nli_result
+            clauses = nli_result.get("clauses", [])
+            method = nli_result.get("method", "nli")
             logger.info(f"NLI analysis complete — {len(clauses)} clauses detected")
         else:
             # Fallback to keyword analysis
             clauses = analyze(request.text)
+            method = "keyword"
             logger.info(f"Keyword analysis complete — {len(clauses)} clauses detected")
     except Exception as e:
         logger.error(f"Enhanced analysis error: {e}. Falling back to keywords.")
         clauses = analyze(request.text)
-    
-    clause_count = len(clauses)
-    logger.info(f"Policy analysis result — {clause_count} clauses detected")
+        method = "keyword"
     
     if clauses:
         result = compute(clauses)
@@ -235,7 +242,7 @@ def analyze_policy_enhanced(request: PolicyRequest):
             "level": result["level"],
             "explanation": result["explanation"],
             "clauses": clauses,
-            "method": "nli" if NLI_AVAILABLE else "keyword"
+            "method": method
         }
     else:
         return {
@@ -243,7 +250,7 @@ def analyze_policy_enhanced(request: PolicyRequest):
             "level": "LOW",
             "explanation": "No risky clauses detected in this policy.",
             "clauses": [],
-            "method": "nli" if NLI_AVAILABLE else "keyword"
+            "method": method
         }
 
 

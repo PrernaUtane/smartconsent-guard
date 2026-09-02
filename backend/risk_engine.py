@@ -5,23 +5,25 @@
 # Output: {ri_score, level, explanation}
 
 # Clause risk weights (P=Privacy, L=Legal, S=Security)
+# ✅ FIXED: Keys now match policy_analyzer.py output
 CLAUSE_RISK_MAP = {
     "Data Selling": {"P": 95, "L": 60, "S": 40},
     "Behavioral Tracking": {"P": 85, "L": 40, "S": 50},
     "Location Tracking": {"P": 90, "L": 50, "S": 60},
-    "Auto-Renewing": {"P": 20, "L": 80, "S": 10},
-    "Arbitration": {"P": 10, "L": 95, "S": 10},
+    "Auto-Renewing Subscriptions": {"P": 20, "L": 80, "S": 10},  # ✅ FIXED
+    "Arbitration Clause": {"P": 10, "L": 95, "S": 10},           # ✅ FIXED
     "Liability Waiver": {"P": 15, "L": 90, "S": 20},
     "Broad Data Sharing": {"P": 80, "L": 55, "S": 45}
 }
 
 # Human-readable explanations for each clause
+# ✅ FIXED: Keys now match policy_analyzer.py output
 CLAUSE_EXPLANATIONS = {
     "Data Selling": "Your personal data may be sold to third parties or advertisers without explicit consent.",
     "Behavioral Tracking": "Your browsing behavior is being tracked across sites to build a profile about you.",
     "Location Tracking": "Your precise GPS location is being collected and potentially stored.",
-    "Auto-Renewing": "Your subscription automatically renews. You may be charged without prior notification.",
-    "Arbitration": "You are waiving your right to sue in court. Any disputes will be resolved through arbitration.",
+    "Auto-Renewing Subscriptions": "Your subscription automatically renews. You may be charged without prior notification.",  # ✅ FIXED
+    "Arbitration Clause": "You are waiving your right to sue in court. Any disputes will be resolved through arbitration.",  # ✅ FIXED
     "Liability Waiver": "The service provider disclaims liability for damages or data loss.",
     "Broad Data Sharing": "Your data may be shared with affiliates, partners, and other third parties."
 }
@@ -56,13 +58,14 @@ def compute(clauses):
     explanation_parts = []
     
     for clause in clauses:
-        clause_type = clause["type"]
+        clause_type = clause.get("type", "")
         confidence = clause.get("confidence", 1.0)
         
         # Get weights for this clause type
         weights = CLAUSE_RISK_MAP.get(clause_type)
         if not weights:
-            continue  # Skip unknown clause types
+            # Log unknown clause types for debugging
+            continue
             
         # Weight each clause's contribution by its confidence
         p_clauses.append(weights["P"] * confidence)

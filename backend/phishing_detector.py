@@ -4,6 +4,16 @@
 import re
 from urllib.parse import urlparse
 
+# ✅ Legitimate domains that should never be flagged as phishing
+LEGITIMATE_DOMAINS = {
+    "amazon.com", "paypal.com", "google.com", "github.com",
+    "microsoft.com", "apple.com", "facebook.com", "netflix.com",
+    "spotify.com", "twitter.com", "instagram.com", "linkedin.com",
+    "yahoo.com", "ebay.com", "walmart.com", "target.com",
+    "bestbuy.com", "adobe.com", "whatsapp.com", "youtube.com",
+    "wikipedia.org", "reddit.com", "stackoverflow.com", "medium.com"
+}
+
 # Legitimate brands (for typosquatting and impersonation)
 BRANDS = [
     "google", "paypal", "amazon", "apple", "microsoft", "facebook",
@@ -32,10 +42,23 @@ SUSPICIOUS_TLDS = [
     '.party', '.review', '.accountant', '.faith', '.racing', '.country',
     '.ddns.net', '.no-ip.org', '.duckdns.org', '.dynu.net', '.freeddns.org',
     '.hopto.org', '.zapto.org', '.sytes.net', '.myftp.org',
-    '.bit.ly', '.tinyurl.com', '.shorturl.at', '.is.gd', '.tiny.cc'
+    '.bit.ly', '.tinyurl.com', '.shorturl.at', '.is.gd', '.tiny.cc',
+    # Free hosting subdomains
+    '.pages.dev', '.web.app', '.firebaseapp.com', '.workers.dev',
+    '.github.io', '.netlify.app', '.vercel.app', '.herokuapp.com'
 ]
 
 def detect(url):
+    """
+    Analyze a URL for phishing indicators.
+    
+    Returns:
+        dict: {
+            "is_phishing": bool,
+            "risk_score": int (0-100),
+            "reasons": list[str]
+        }
+    """
     risk_score = 0
     reasons = []
 
@@ -44,6 +67,14 @@ def detect(url):
     path = parsed.path
     scheme = parsed.scheme
     domain_lower = domain.lower()
+
+    # ✅ Skip phishing checks for legitimate domains
+    if domain_lower in LEGITIMATE_DOMAINS:
+        return {
+            "is_phishing": False,
+            "risk_score": 0,
+            "reasons": ["Legitimate domain"]
+        }
 
     # ----- 1. HIGH-RISK FREE HOSTING (e.g., .pages.dev) -----
     is_high_risk_hosting = False

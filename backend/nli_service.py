@@ -1,16 +1,16 @@
 # nli_service.py
-# Enhanced NLI microservice for SmartConsent Guard
-# Includes: More Clause Types + Severity + Sentiment + Privacy Score + Categorization + Summary
+# Optimized NLI microservice for SmartConsent Guard
+# Uses smaller model for faster loading, with keyword fallback
 
 import re
+import sys
 from typing import List, Dict, Any
 
 # ============================================================
-# 1. ENHANCED KEYWORD MAP – 12 Clause Types
+# 1. KEYWORD MAP – 12 Clause Types
 # ============================================================
 
 KEYWORD_MAP = {
-    # ----- Privacy Violations -----
     "Data Selling": [
         "sell", "sold", "selling", "share", "sharing", "shared",
         "third-party", "third party", "advertisers", "marketing partners",
@@ -41,8 +41,6 @@ KEYWORD_MAP = {
         "service providers", "vendors", "suppliers",
         "business partners", "shared with"
     ],
-    
-    # ----- Legal Traps -----
     "Arbitration Clause": [
         "arbitration", "arbitrate", "arbitrator",
         "waive right", "class action", "class-action",
@@ -60,8 +58,6 @@ KEYWORD_MAP = {
         "indemnify", "limitation of liability",
         "assume risk", "accept risk", "without liability"
     ],
-    
-    # ----- Financial Risks -----
     "Auto-Renewing Subscriptions": [
         "auto-renew", "auto renew", "automatic renew",
         "subscription", "recurring", "recurring billing",
@@ -70,16 +66,12 @@ KEYWORD_MAP = {
         "rollover", "evergreen", "perpetual",
         "monthly charge", "annual charge", "recurring payment"
     ],
-    
-    # ----- NEW: Data Retention -----
     "Data Retention": [
         "retain", "retains", "retention", "keep", "keeps",
         "store", "stored", "storage", "duration", "period",
         "time period", "hold", "held", "archive", "archived",
         "keep your data", "store your data"
     ],
-    
-    # ----- NEW: User Rights -----
     "User Rights": [
         "right to delete", "right to access", "right to correct",
         "data portability", "right to object", "right to opt out",
@@ -87,8 +79,6 @@ KEYWORD_MAP = {
         "request deletion", "access request", "opt out", "opt-out",
         "object to processing", "rights under", "california rights"
     ],
-    
-    # ----- NEW: Security Measures -----
     "Security Measures": [
         "encryption", "encrypted", "security", "secure",
         "protect", "protects", "protection", "safeguard",
@@ -96,16 +86,12 @@ KEYWORD_MAP = {
         "access control", "authentication", "authorization",
         "vulnerability", "security measures", "security practices"
     ],
-    
-    # ----- NEW: Third-Party Processing -----
     "Third-Party Processing": [
         "processor", "data controller", "sub-processor",
         "vendor", "vendors", "third party service",
         "service provider", "outsource", "outsourced",
         "process on our behalf", "data processing agreement"
     ],
-    
-    # ----- NEW: International Transfer -----
     "International Transfer": [
         "transfer abroad", "outside country", "international data",
         "cross-border", "cross border", "data transfer",
@@ -115,19 +101,7 @@ KEYWORD_MAP = {
 }
 
 # ============================================================
-# 2. CLAUSE CATEGORIES – Group clauses by type
-# ============================================================
-
-CLAUSE_CATEGORIES = {
-    "Privacy Violations": ["Data Selling", "Behavioral Tracking", "Location Tracking", "Broad Data Sharing"],
-    "Legal Traps": ["Arbitration Clause", "Liability Waiver"],
-    "Financial Risks": ["Auto-Renewing Subscriptions"],
-    "Data Governance": ["Data Retention", "User Rights", "Security Measures"],
-    "Data Processing": ["Third-Party Processing", "International Transfer"]
-}
-
-# ============================================================
-# 3. CLAUSE SEVERITY – Risk level for each clause
+# 2. CONFIGURATION
 # ============================================================
 
 CLAUSE_SEVERITY = {
@@ -145,15 +119,12 @@ CLAUSE_SEVERITY = {
     "International Transfer": "MEDIUM"
 }
 
-# ============================================================
-# 4. SEVERITY COLORS – For UI display
-# ============================================================
-
-SEVERITY_COLORS = {
-    "CRITICAL": "#e17055",
-    "HIGH": "#fdcb6e",
-    "MEDIUM": "#fdcb6e",
-    "LOW": "#00b894"
+CLAUSE_CATEGORIES = {
+    "Privacy Violations": ["Data Selling", "Behavioral Tracking", "Location Tracking", "Broad Data Sharing"],
+    "Legal Traps": ["Arbitration Clause", "Liability Waiver"],
+    "Financial Risks": ["Auto-Renewing Subscriptions"],
+    "Data Governance": ["Data Retention", "User Rights", "Security Measures"],
+    "Data Processing": ["Third-Party Processing", "International Transfer"]
 }
 
 SEVERITY_ICONS = {
@@ -163,9 +134,12 @@ SEVERITY_ICONS = {
     "LOW": "🟢"
 }
 
-# ============================================================
-# 5. Context-Aware Validation
-# ============================================================
+SEVERITY_COLORS = {
+    "CRITICAL": "#e17055",
+    "HIGH": "#ffa502",
+    "MEDIUM": "#fdcb6e",
+    "LOW": "#00b894"
+}
 
 NEGATION_WORDS = {
     "do not", "don't", "does not", "doesn't", "will not",
@@ -177,210 +151,169 @@ DISCLAIMER_WORDS = {
     "unless", "only if", "solely", "strictly"
 }
 
+# ============================================================
+# 3. UTILITY FUNCTIONS
+# ============================================================
+
 def _has_negation(text: str, keyword: str, window: int = 50) -> bool:
-    """Check if a negation word appears near the keyword."""
-    keyword_pos = text.lower().find(keyword)
-    if keyword_pos == -1:
+    pos = text.lower().find(keyword)
+    if pos == -1:
         return False
-    start = max(0, keyword_pos - window)
-    end = min(len(text), keyword_pos + window)
+    start = max(0, pos - window)
+    end = min(len(text), pos + window)
     surrounding = text[start:end].lower()
-    for neg in NEGATION_WORDS:
-        if neg in surrounding:
-            return True
-    return False
+    return any(neg in surrounding for neg in NEGATION_WORDS)
 
 def _has_disclaimer(text: str, keyword: str, window: int = 40) -> bool:
-    """Check if a disclaimer word appears near the keyword."""
-    keyword_pos = text.lower().find(keyword)
-    if keyword_pos == -1:
+    pos = text.lower().find(keyword)
+    if pos == -1:
         return False
-    start = max(0, keyword_pos - window)
-    surrounding = text[start:keyword_pos].lower()
-    for dis in DISCLAIMER_WORDS:
-        if dis in surrounding:
-            return True
-    return False
+    start = max(0, pos - window)
+    surrounding = text[start:pos].lower()
+    return any(dis in surrounding for dis in DISCLAIMER_WORDS)
 
 def _is_valid_match(chunk: str, keyword: str, clause_type: str) -> bool:
-    """Validate if a keyword match is legitimate."""
     chunk_lower = chunk.lower()
-    keyword_lower = keyword.lower()
+    kw = keyword.lower()
     
-    if _has_negation(chunk_lower, keyword_lower):
+    if _has_negation(chunk_lower, kw):
         return False
-    if _has_disclaimer(chunk_lower, keyword_lower):
+    if _has_disclaimer(chunk_lower, kw):
         return False
     
+    # Only flag whole words for common terms
     stop_words = {"share", "track", "cookie", "service", "policy", "terms"}
-    if keyword_lower in stop_words:
-        pattern = r'\b' + re.escape(keyword_lower) + r'\b'
-        if not re.search(pattern, chunk_lower):
-            return False
+    if kw in stop_words:
+        pattern = r'\b' + re.escape(kw) + r'\b'
+        return bool(re.search(pattern, chunk_lower))
     
     return True
 
-# ============================================================
-# 6. SENTIMENT ANALYSIS
-# ============================================================
+def _chunk_text(text: str, chunk_size: int = 400, overlap: int = 50) -> List[str]:
+    """Split text into overlapping chunks."""
+    if len(text) <= chunk_size:
+        return [text]
+    chunks = []
+    step = chunk_size - overlap
+    for i in range(0, len(text), step):
+        chunk = text[i:i + chunk_size]
+        if len(chunk) >= 50:
+            chunks.append(chunk)
+        if i + chunk_size >= len(text):
+            break
+    return chunks
+
+def _categorize_clauses(clauses: List[Dict]) -> Dict[str, List[str]]:
+    """Group clauses by category."""
+    result = {}
+    for category, clause_types in CLAUSE_CATEGORIES.items():
+        found = [c["type"] for c in clauses if c["type"] in clause_types]
+        if found:
+            result[category] = found
+    return result
 
 def analyze_sentiment(text: str) -> str:
-    """
-    Analyze the tone of the policy text.
-    Returns: "User-Friendly", "Neutral", or "User-Hostile"
-    """
-    positive_words = [
-        "right", "choice", "control", "transparent", "protect",
-        "clear", "simple", "easy", "understand", "respect",
-        "privacy", "consent", "opt-out", "opt out", "withdraw",
-        "right to delete", "right to access", "portability"
-    ]
-    negative_words = [
-        "waive", "liability", "disclaim", "terminate",
-        "without notice", "sole discretion", "irrevocable",
-        "binding", "mandatory", "forced", "obligated",
-        "unilateral", "binding arbitration", "class action waiver"
-    ]
+    """Analyze policy tone."""
+    positive = ["right", "choice", "control", "transparent", "protect", "privacy", "consent", "opt-out"]
+    negative = ["waive", "liability", "disclaim", "terminate", "without notice", "binding", "mandatory"]
     
-    pos_count = sum(1 for word in positive_words if word in text.lower())
-    neg_count = sum(1 for word in negative_words if word in text.lower())
+    pos_count = sum(1 for w in positive if w in text.lower())
+    neg_count = sum(1 for w in negative if w in text.lower())
     
     if neg_count > pos_count * 2:
         return "User-Hostile"
     elif pos_count > neg_count * 2:
         return "User-Friendly"
-    else:
-        return "Neutral"
-
-# ============================================================
-# 7. PRIVACY SCORE
-# ============================================================
+    return "Neutral"
 
 def calculate_privacy_score(clauses: List[Dict]) -> int:
-    """
-    Calculate a separate privacy score (0-100).
-    Higher score = better privacy.
-    """
-    score = 100
+    """Calculate privacy score (0-100)."""
     deductions = {
-        "Data Selling": 25,
-        "Behavioral Tracking": 20,
-        "Location Tracking": 20,
-        "Broad Data Sharing": 15,
-        "Auto-Renewing Subscriptions": 10,
-        "Arbitration Clause": 10,
-        "Liability Waiver": 10,
-        "Data Retention": 5,
-        "Third-Party Processing": 5,
-        "International Transfer": 5
+        "Data Selling": 25, "Behavioral Tracking": 20, "Location Tracking": 20,
+        "Broad Data Sharing": 15, "Auto-Renewing Subscriptions": 10,
+        "Arbitration Clause": 10, "Liability Waiver": 10,
+        "Data Retention": 5, "Third-Party Processing": 5, "International Transfer": 5
     }
-    
+    score = 100
     for clause in clauses:
-        clause_type = clause.get("type", "")
-        if clause_type in deductions:
-            score -= deductions[clause_type]
-    
+        score -= deductions.get(clause.get("type", ""), 0)
     return max(0, min(100, score))
 
-# ============================================================
-# 8. PLAIN ENGLISH SUMMARY
-# ============================================================
-
 def generate_summary(clauses: List[Dict]) -> str:
-    """
-    Generate a plain English summary of detected clauses.
-    """
+    """Generate plain English summary."""
     if not clauses:
         return "✅ This policy appears to be safe. No major risks detected."
     
-    critical_clauses = [
-        c["type"] for c in clauses 
-        if CLAUSE_SEVERITY.get(c["type"]) in ["CRITICAL", "HIGH"]
-    ]
-    medium_clauses = [
-        c["type"] for c in clauses 
-        if CLAUSE_SEVERITY.get(c["type"]) == "MEDIUM"
-    ]
-    
+    critical = [c["type"] for c in clauses if CLAUSE_SEVERITY.get(c["type"]) in ["CRITICAL", "HIGH"]]
+    medium = [c["type"] for c in clauses if CLAUSE_SEVERITY.get(c["type"]) == "MEDIUM"]
     total = len(clauses)
     
-    if critical_clauses:
-        return f"⚠️ This policy contains {total} risky clause(s), including {', '.join(critical_clauses[:3])}. Your privacy may be at significant risk."
-    elif medium_clauses:
-        return f"📋 This policy contains {total} clause(s) that may require your attention: {', '.join(medium_clauses[:3])}."
-    else:
-        return f"ℹ️ This policy contains {total} low-risk clause(s). Review the details below."
+    if critical:
+        return f"⚠️ This policy contains {total} risky clause(s), including {', '.join(critical[:3])}. Your privacy may be at significant risk."
+    elif medium:
+        return f"📋 This policy contains {total} clause(s) that may require your attention: {', '.join(medium[:3])}."
+    return f"ℹ️ This policy contains {total} low-risk clause(s). Review the details below."
 
 # ============================================================
-# 9. NLI SERVICE CLASS
+# 4. NLI SERVICE
 # ============================================================
 
 class NLIService:
     def __init__(self):
         self.use_nli = False
         self.classifier = None
+        self._load_model()
+    
+    def _load_model(self):
+        """Load the NLI model with fallback."""
+        print(f"[NLI Service] Python: {sys.executable}")
+        print("[NLI Service] Loading NLI model...")
+        
         try:
             from transformers import pipeline
             self.classifier = pipeline(
                 "zero-shot-classification",
-                model="cross-encoder/nli-distilroberta-base",
+                model="typeform/distilbert-base-uncased-mnli",  # ✅ Smaller model (250MB)
                 device=-1
             )
             self.use_nli = True
-            print("[NLI Service] NLI model loaded successfully")
+            print("[NLI Service] ✅ NLI model loaded successfully")
+        except ImportError as e:
+            print(f"[NLI Service] ❌ ImportError: {e}")
+            print("[NLI Service] Run: pip install transformers torch")
         except Exception as e:
-            print(f"[NLI Service] NLI initialization failed: {e}")
+            print(f"[NLI Service] ❌ Error: {e}")
+            print("[NLI Service] Falling back to keyword-only mode")
     
     def analyze(self, text: str) -> Dict[str, Any]:
-        """
-        Analyze text and return enhanced results.
-        
-        Returns:
-            {
-                "clauses": [{"type": str, "confidence": float, "severity": str}],
-                "method": str,
-                "sentiment": str,
-                "privacy_score": int,
-                "categories": dict,
-                "summary": str
-            }
-        """
-        if not text or not text.strip():
+        """Main entry point."""
+        if not text or len(text.strip()) < 50:
             return self._empty_result()
         
         text = re.sub(r'\s+', ' ', text).strip()
-        if len(text) < 50:
-            return self._empty_result()
+        chunks = _chunk_text(text)
         
-        chunks = self._chunk_text(text)
-        
-        # Use NLI if available, otherwise use keywords
+        # Use NLI if available
         if self.use_nli and self.classifier:
-            clauses = self._analyze_nli(chunks)
+            clauses = self._analyze_with_nli(chunks)
             method = "nli"
         else:
-            clauses = self._analyze_keywords(chunks)
+            clauses = self._analyze_with_keywords(chunks)
             method = "keyword"
         
-        # Add severity to each clause
-        for clause in clauses:
-            clause["severity"] = CLAUSE_SEVERITY.get(clause["type"], "LOW")
-            clause["icon"] = SEVERITY_ICONS.get(clause["severity"], "🟢")
-            clause["color"] = SEVERITY_COLORS.get(clause["severity"], "#00b894")
-        
-        # Calculate enhanced metrics
-        privacy_score = calculate_privacy_score(clauses)
-        sentiment = analyze_sentiment(text)
-        summary = generate_summary(clauses)
-        categories = self._categorize_clauses(clauses)
+        # Add metadata
+        for c in clauses:
+            c["severity"] = CLAUSE_SEVERITY.get(c["type"], "LOW")
+            c["icon"] = SEVERITY_ICONS.get(c["severity"], "🟢")
+            c["color"] = SEVERITY_COLORS.get(c["severity"], "#00b894")
         
         return {
             "clauses": clauses,
             "method": method,
-            "sentiment": sentiment,
-            "privacy_score": privacy_score,
-            "categories": categories,
-            "summary": summary
+            "sentiment": analyze_sentiment(text),
+            "privacy_score": calculate_privacy_score(clauses),
+            "categories": _categorize_clauses(clauses),
+            "summary": generate_summary(clauses)
         }
     
     def _empty_result(self) -> Dict[str, Any]:
@@ -393,43 +326,26 @@ class NLIService:
             "summary": "No policy text to analyze."
         }
     
-    def _categorize_clauses(self, clauses: List[Dict]) -> Dict[str, List[str]]:
-        """Group clauses by category."""
-        result = {}
-        for category, clause_types in CLAUSE_CATEGORIES.items():
-            found = [c["type"] for c in clauses if c["type"] in clause_types]
-            if found:
-                result[category] = found
-        return result
-    
-    def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
-        if len(text) <= chunk_size:
-            return [text]
-        chunks = []
-        step = chunk_size - overlap
-        for i in range(0, len(text), step):
-            chunk = text[i:i + chunk_size]
-            if len(chunk) < 50:
-                continue
-            chunks.append(chunk)
-            if i + chunk_size >= len(text):
-                break
-        return chunks
-    
-    def _analyze_keywords(self, chunks: List[str]) -> List[Dict[str, Any]]:
-        found = {}
+    def _analyze_with_keywords(self, chunks: List[str]) -> List[Dict[str, Any]]:
+        """Keyword-based analysis with hit-count confidence."""
+        hits = {}
         for chunk in chunks:
             chunk_lower = chunk.lower()
             for clause_type, keywords in KEYWORD_MAP.items():
-                for keyword in keywords:
-                    if keyword in chunk_lower and _is_valid_match(chunk_lower, keyword, clause_type):
-                        found[clause_type] = 1.0
-                        break
-        return [{"type": k, "confidence": v} for k, v in found.items()]
+                for kw in keywords:
+                    if kw in chunk_lower and _is_valid_match(chunk_lower, kw, clause_type):
+                        hits[clause_type] = hits.get(clause_type, 0) + 1
+        
+        results = []
+        for clause_type, count in hits.items():
+            confidence = min(0.5 + (count * 0.03), 0.92)  # Range: 0.53 - 0.92
+            results.append({"type": clause_type, "confidence": round(confidence, 2)})
+        return results
     
-    def _analyze_nli(self, chunks: List[str]) -> List[Dict[str, Any]]:
+    def _analyze_with_nli(self, chunks: List[str]) -> List[Dict[str, Any]]:
+        """NLI-based analysis with real confidence scores."""
         if not self.classifier:
-            return self._analyze_keywords(chunks)
+            return self._analyze_with_keywords(chunks)
         
         found = {}
         candidate_labels = list(KEYWORD_MAP.keys())
@@ -446,18 +362,19 @@ class NLIService:
                     if score > 0.55:
                         found[label] = max(found.get(label, 0), score)
             except Exception as e:
-                print(f"[NLI] Error on chunk: {e}")
+                print(f"[NLI] Chunk error: {e}")
+                # Fallback to keywords for this chunk
                 chunk_lower = chunk.lower()
                 for clause_type, keywords in KEYWORD_MAP.items():
-                    for keyword in keywords:
-                        if keyword in chunk_lower and _is_valid_match(chunk_lower, keyword, clause_type):
+                    for kw in keywords:
+                        if kw in chunk_lower and _is_valid_match(chunk_lower, kw, clause_type):
                             found[clause_type] = 1.0
                             break
         
         return [{"type": k, "confidence": round(v, 2)} for k, v in found.items()]
 
 # ============================================================
-# 10. SINGLETON AND CONVENIENCE FUNCTIONS
+# 5. SINGLETON
 # ============================================================
 
 _nli_service = None
@@ -469,17 +386,15 @@ def get_nli_service():
     return _nli_service
 
 def analyze_with_nli(text: str) -> Dict[str, Any]:
-    """Convenience function – returns enhanced results."""
-    service = get_nli_service()
-    return service.analyze(text)
+    return get_nli_service().analyze(text)
 
 # ============================================================
-# 11. TESTING
+# 6. TESTING
 # ============================================================
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Testing Enhanced NLI Service")
+    print("Testing Optimized NLI Service")
     print("=" * 60)
     
     test_text = """
@@ -492,20 +407,9 @@ if __name__ == "__main__":
     service = NLIService()
     result = service.analyze(test_text)
     
-    print(f"\n📊 Detected: {len(result['clauses'])} clauses")
-    print(f"📋 Method: {result['method']}")
-    print(f"💬 Sentiment: {result['sentiment']}")
-    print(f"🔒 Privacy Score: {result['privacy_score']}/100")
+    print(f"\n📊 Method: {result['method']}")
+    print(f"📋 Clauses: {len(result['clauses'])}")
+    for c in result['clauses']:
+        print(f"  {c['icon']} {c['type']}: {c['confidence']*100:.0f}%")
     print(f"\n📝 Summary: {result['summary']}")
-    
-    print("\n📋 Clauses:")
-    for clause in result['clauses']:
-        print(f"  {clause['icon']} {clause['type']}: {clause['confidence']*100:.0f}% ({clause['severity']})")
-    
-    print("\n📂 Categories:")
-    for category, items in result['categories'].items():
-        print(f"  {category}: {', '.join(items)}")
-    
-    print("\n" + "=" * 60)
-    print("Test Complete")
     print("=" * 60)

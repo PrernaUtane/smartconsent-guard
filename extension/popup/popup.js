@@ -18,12 +18,10 @@ let currentDomain = '';
 let currentUrl = '';
 
 // --- Global error suppressor for chrome.runtime.lastError ---
-// This prevents the "Unchecked runtime.lastError" warning from being logged
 const originalQuery = chrome.tabs.query;
 chrome.tabs.query = function (queryInfo, callback) {
     originalQuery(queryInfo, (tabs) => {
         if (chrome.runtime.lastError) {
-            // Silently ignore the error – it's usually because of chrome:// URLs
             console.debug('Ignored tabs.query error:', chrome.runtime.lastError.message);
             callback([]);
             return;
@@ -32,7 +30,6 @@ chrome.tabs.query = function (queryInfo, callback) {
     });
 };
 
-// Also patch executeScript to avoid errors on internal pages
 const originalExecuteScript = chrome.scripting.executeScript;
 chrome.scripting.executeScript = function (injection, callback) {
     originalExecuteScript(injection, (results) => {
@@ -50,7 +47,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const tab = await getCurrentTab();
 
-        // Check if tab is internal or invalid
         if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('about:') || tab.url === '') {
             showInternalPageMessage();
             return;
@@ -60,20 +56,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentDomain = new URL(tab.url).hostname;
         siteUrl.textContent = currentDomain;
 
-        // Step 1: Check for phishing
         const phishingResult = await checkUrl(currentUrl);
         updatePhishingUI(phishingResult);
 
-        // Step 2: Extract policy text from the page
         const policyText = await getPolicyText(tab.id);
         if (policyText && policyText.length > 50) {
-            // Step 3: Analyze policy using enhanced NLI endpoint
             try {
                 const policyResult = await analyzePolicyEnhanced(policyText);
+                console.log('Policy Analysis Result:', policyResult);
                 updatePolicyUI(policyResult);
             } catch (error) {
                 console.error('Enhanced policy analysis failed, trying fallback:', error);
-                // Fallback to regular keyword analysis
                 const policyResult = await analyzePolicy(policyText);
                 updatePolicyUI(policyResult);
             }
@@ -87,7 +80,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// --- Helper: show friendly message for internal pages ---
 function showInternalPageMessage() {
     siteUrl.textContent = '🔒 Internal Chrome Page';
     riskScore.textContent = '-';
@@ -101,9 +93,6 @@ function showInternalPageMessage() {
 
 // --- API Calls ---
 
-/**
- * Check URL for phishing using heuristic engine
- */
 async function checkUrl(url) {
     const response = await fetch(`${BACKEND_URL}/check-url`, {
         method: 'POST',
@@ -114,22 +103,27 @@ async function checkUrl(url) {
     return response.json();
 }
 
-/**
- * Analyze policy using NLI-enhanced endpoint (AI-powered)
- */
 async function analyzePolicyEnhanced(text) {
     const response = await fetch(`${BACKEND_URL}/analyze-policy-enhanced`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
     });
-    if (!response.ok) throw new Error('Failed to analyze policy with NLI');
-    return response.json();
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${response.status} - ${errorText}`);
+    }
+    const data = await response.json();
+    // ✅ Ensure we have a valid response structure
+    if (!data.clauses) {
+        data.clauses = [];
+    }
+    if (!data.method) {
+        data.method = 'keyword';
+    }
+    return data;
 }
 
-/**
- * Analyze policy using keyword-based endpoint (fallback)
- */
 async function analyzePolicy(text) {
     const response = await fetch(`${BACKEND_URL}/analyze-policy`, {
         method: 'POST',
@@ -182,12 +176,28 @@ function updatePhishingUI(result) {
 }
 
 function updatePolicyUI(result) {
-    const clauses = result.clauses || [];
-    clauseCount.textContent = clauses.length;
-
-    // Show method used (if available)
+    // ✅ Handle the response safely
+    let clauses = [];
     const method = result.method || 'keyword';
+    
+    // ✅ Extract clauses from various possible response formats
+    if (Array.isArray(result.clauses)) {
+        clauses = result.clauses;
+    } else if (result.clauses && typeof result.clauses === 'object') {
+        if (Array.isArray(result.clauses.clauses)) {
+            clauses = result.clauses.clauses;
+        } else if (Array.isArray(result.clauses.data)) {
+            clauses = result.clauses.data;
+        } else {
+            // Single clause object
+            clauses = [result.clauses];
+        }
+    }
+
     console.log(`Policy analysis method: ${method}`);
+    console.log(`Clauses detected: ${clauses.length}`);
+
+    clauseCount.textContent = clauses.length;
 
     if (clauses.length === 0) {
         clausesList.innerHTML = '<div class="clause-empty">No risky clauses detected</div>';
@@ -196,18 +206,49 @@ function updatePolicyUI(result) {
 
     let html = '';
     for (const clause of clauses) {
-        const confidencePercent = Math.round((clause.confidence || 1) * 100);
+        let confidence = 1.0;
+        if (typeof clause.confidence === 'number') {
+            confidence = clause.confidence;
+        } else if (clause.confidence && typeof clause.confidence === 'object') {
+            confidence = clause.confidence.score || 1.0;
+        }
+        
+        // ✅ Ensure confidence is within reasonable range
+        confidence = Math.min(Math.max(confidence, 0.5), 1.0);
+        
+        const confidencePercent = Math.round(confidence * 100);
+        const clauseType = clause.type || 'Unknown';
+        const severity = clause.severity || 'MEDIUM';
+        const icon = clause.icon || '🟠';
+        
+        let color = '#fdcb6e';
+        if (severity === 'CRITICAL') color = '#e17055';
+        else if (severity === 'HIGH') color = '#ffa502';
+        else if (severity === 'MEDIUM') color = '#fdcb6e';
+        else if (severity === 'LOW') color = '#00b894';
+        
+        // ✅ Show method indicator next to confidence
+        const methodLabel = method === 'nli' ? '🤖 AI' : '📝 Keyword';
+        
         html += `
-            <div class="clause-item">
-                <span class="clause-name">${escapeHtml(clause.type)}</span>
-                <span class="clause-confidence">${confidencePercent}%</span>
+            <div class="clause-item" style="border-left: 3px solid ${color};">
+                <span class="clause-name">${escapeHtml(icon)} ${escapeHtml(clauseType)}</span>
+                <span class="clause-confidence" style="color: ${color};">
+                    ${confidencePercent}% ${methodLabel}
+                </span>
             </div>
         `;
     }
     clausesList.innerHTML = html;
 
+    // ✅ Update explanation if available
     if (result.explanation) {
         explanationText.textContent = result.explanation;
+        explanationText.style.color = 'rgba(255,255,255,0.7)';
+    } else if (clauses.length > 0) {
+        // ✅ Generate a simple explanation if none provided
+        const clauseNames = clauses.map(c => c.type).join(', ');
+        explanationText.textContent = `Detected clauses: ${clauseNames}`;
         explanationText.style.color = 'rgba(255,255,255,0.7)';
     }
 }
@@ -223,7 +264,6 @@ function escapeHtml(text) {
 function getCurrentTab() {
     return new Promise((resolve) => {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            // The error is already suppressed by the patched method above
             resolve(tabs[0] || null);
         });
     });
@@ -247,7 +287,6 @@ async function getPolicyText(tabId) {
                             if (t && t.length > 100) text += t + '\n';
                         }
                     }
-                    // If no specific section found, check URL for policy pages
                     if (!text && /\/privacy|\/terms|\/legal|\/policy/.test(window.location.href)) {
                         text = document.body?.textContent?.trim() || '';
                     }
@@ -255,7 +294,6 @@ async function getPolicyText(tabId) {
                 }
             },
             (results) => {
-                // Error already suppressed
                 if (results && results[0] && results[0].result) {
                     resolve(results[0].result);
                 } else {
