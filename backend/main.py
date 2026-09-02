@@ -6,6 +6,7 @@ Endpoints:
     GET  /health                      → Server health check
     POST /check-url                   → Phishing / suspicious URL analysis
     POST /analyze-policy              → Terms & Conditions NLP risk analysis
+    POST /analyze-policy-enhanced     → Enhanced T&C analysis with NLI (NEW)
     POST /check-google-safebrowsing   → Google Safe Browsing API check
     POST /check-virustotal            → VirusTotal API check (70+ vendors)
 """
@@ -22,6 +23,16 @@ from pydantic import BaseModel, HttpUrl, field_validator
 # Import functions directly (not classes)
 from phishing_detector import detect
 from policy_analyzer import analyze
+from risk_engine import compute
+
+# Try to import NLI service (optional)
+try:
+    from nli_service import analyze_with_nli
+    NLI_AVAILABLE = True
+    print("[main.py] NLI service loaded successfully")
+except ImportError:
+    NLI_AVAILABLE = False
+    print("[main.py] NLI service not available. Using keyword fallback.")
 
 
 # ---------------------------------------------------------------------------
@@ -42,8 +53,9 @@ logger = logging.getLogger("smartconsent")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting SmartConsent Guard backend …")
-    logger.info("PhishingDetector ready.")  # Using function directly
-    logger.info("PolicyAnalyzer ready.")    # Using function directly
+    logger.info("PhishingDetector ready.")
+    logger.info("PolicyAnalyzer ready.")
+    logger.info(f"NLI Service: {'Available' if NLI_AVAILABLE else 'Not available'}")
     yield
     logger.info("Shutting down SmartConsent Guard backend.")
 
@@ -117,9 +129,10 @@ def health_check():
         "service": "SmartConsent Guard",
         "version": "1.0.0",
         "components": {
-            "phishing_detector": True,  # Always loaded (function)
-            "policy_analyzer": True,    # Always loaded (function)
-            "nlp_model_loaded": False,  # Optional NLI model not loaded
+            "phishing_detector": True,
+            "policy_analyzer": True,
+            "nli_available": NLI_AVAILABLE,
+            "nlp_model_loaded": False,
         },
     }
 
@@ -145,6 +158,7 @@ def check_url(request: UrlRequest):
 def analyze_policy(request: PolicyRequest):
     """
     Analyze Terms & Conditions / Privacy Policy text for risky clauses.
+    Uses keyword-based detection (fast, offline).
 
     Returns:
         risk_score, level, clauses (with confidence), explanation
@@ -152,12 +166,76 @@ def analyze_policy(request: PolicyRequest):
     text_preview = request.text[:80].replace("\n", " ")
     logger.info(f"Analyzing policy text: '{text_preview}…'")
 
-    result = analyze(request.text)
-    logger.info(
-        f"Policy analysis result — score={result['risk_score']}, "
-        f"level={result['level']}, clauses={len(result['clauses'])}"
-    )
-    return result
+    # analyze() returns a list of clauses
+    clauses = analyze(request.text)
+    
+    clause_count = len(clauses)
+    logger.info(f"Policy analysis result — {clause_count} clauses detected")
+    
+    if clauses:
+        result = compute(clauses)
+        return {
+            "ri_score": result["ri_score"],
+            "level": result["level"],
+            "explanation": result["explanation"],
+            "clauses": clauses,
+            "method": "keyword"
+        }
+    else:
+        return {
+            "ri_score": 0,
+            "level": "LOW",
+            "explanation": "No risky clauses detected in this policy.",
+            "clauses": [],
+            "method": "keyword"
+        }
+
+
+@app.post("/analyze-policy-enhanced", tags=["policy"])
+def analyze_policy_enhanced(request: PolicyRequest):
+    """
+    Enhanced policy analysis using NLI (AI-powered) with keyword fallback.
+    Returns clauses detected using NLI or keywords.
+
+    Returns:
+        risk_score, level, clauses (with confidence), explanation, method
+    """
+    text_preview = request.text[:80].replace("\n", " ")
+    logger.info(f"Analyzing policy text (enhanced): '{text_preview}…'")
+
+    try:
+        if NLI_AVAILABLE:
+            # Use NLI service
+            clauses = analyze_with_nli(request.text)
+            logger.info(f"NLI analysis complete — {len(clauses)} clauses detected")
+        else:
+            # Fallback to keyword analysis
+            clauses = analyze(request.text)
+            logger.info(f"Keyword analysis complete — {len(clauses)} clauses detected")
+    except Exception as e:
+        logger.error(f"Enhanced analysis error: {e}. Falling back to keywords.")
+        clauses = analyze(request.text)
+    
+    clause_count = len(clauses)
+    logger.info(f"Policy analysis result — {clause_count} clauses detected")
+    
+    if clauses:
+        result = compute(clauses)
+        return {
+            "ri_score": result["ri_score"],
+            "level": result["level"],
+            "explanation": result["explanation"],
+            "clauses": clauses,
+            "method": "nli" if NLI_AVAILABLE else "keyword"
+        }
+    else:
+        return {
+            "ri_score": 0,
+            "level": "LOW",
+            "explanation": "No risky clauses detected in this policy.",
+            "clauses": [],
+            "method": "nli" if NLI_AVAILABLE else "keyword"
+        }
 
 
 # ---------------------------------------------------------------------------
