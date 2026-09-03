@@ -56,9 +56,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentDomain = new URL(tab.url).hostname;
         siteUrl.textContent = currentDomain;
 
+        // ✅ Step 1: Check for phishing (ALWAYS runs)
         const phishingResult = await checkUrl(currentUrl);
         updatePhishingUI(phishingResult);
 
+        // ✅ Step 2: Try to extract and analyze policy text (if available)
         const policyText = await getPolicyText(tab.id);
         if (policyText && policyText.length > 50) {
             try {
@@ -71,7 +73,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 updatePolicyUI(policyResult);
             }
         } else {
-            clausesList.innerHTML = '<div class="clause-empty">No policy text found on this page</div>';
+            // ✅ ALWAYS show something meaningful on every site
+            clausesList.innerHTML = `
+                <div class="clause-empty">
+                    ℹ️ No privacy policy detected on this page.<br>
+                    <span style="font-size: 11px; color: rgba(255,255,255,0.4);">
+                        SmartConsent Guard still protects you from phishing threats.
+                    </span>
+                </div>
+            `;
+            clauseCount.textContent = '—';
         }
     } catch (error) {
         console.error('Popup error:', error);
@@ -194,13 +205,52 @@ function updatePolicyUI(result) {
         }
     }
 
+    // ✅ Display the risk score from the response
+    if (result.ri_score !== undefined && result.ri_score !== null) {
+        const score = result.ri_score;
+        riskScore.textContent = score;
+        
+        // Update the ring
+        const offset = CIRCUMFERENCE - (score / 100) * CIRCUMFERENCE;
+        riskRing.style.strokeDashoffset = offset;
+        
+        // Update colors
+        let color, level, badgeClass;
+        if (score > 60) {
+            color = '#e17055';
+            level = 'HIGH';
+            badgeClass = 'badge-high';
+        } else if (score > 30) {
+            color = '#fdcb6e';
+            level = 'MEDIUM';
+            badgeClass = 'badge-medium';
+        } else {
+            color = '#00b894';
+            level = 'LOW';
+            badgeClass = 'badge-low';
+        }
+        
+        riskRing.style.stroke = color;
+        riskLevel.textContent = level;
+        riskLevel.style.color = color;
+        riskBadge.textContent = level;
+        riskBadge.className = `badge ${badgeClass}`;
+    }
+
     console.log(`Policy analysis method: ${method}`);
     console.log(`Clauses detected: ${clauses.length}`);
 
     clauseCount.textContent = clauses.length;
 
     if (clauses.length === 0) {
-        clausesList.innerHTML = '<div class="clause-empty">No risky clauses detected</div>';
+        clausesList.innerHTML = `
+            <div class="clause-empty">
+                ℹ️ No risky clauses detected in this policy.<br>
+                <span style="font-size: 11px; color: rgba(255,255,255,0.4);">
+                    The privacy policy appears to be safe.
+                </span>
+            </div>
+        `;
         return;
     }
 

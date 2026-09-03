@@ -1,6 +1,6 @@
 # nli_service.py
 # Optimized NLI microservice for SmartConsent Guard
-# Uses smaller model for faster loading, with keyword fallback
+# Uses smaller model for faster loading, with keyword fallback and realistic confidence
 
 import re
 import sys
@@ -273,7 +273,7 @@ class NLIService:
             from transformers import pipeline
             self.classifier = pipeline(
                 "zero-shot-classification",
-                model="typeform/distilbert-base-uncased-mnli",  # ✅ Smaller model (250MB)
+                model="typeform/distilbert-base-uncased-mnli",  # Smaller model (250MB)
                 device=-1
             )
             self.use_nli = True
@@ -327,19 +327,25 @@ class NLIService:
         }
     
     def _analyze_with_keywords(self, chunks: List[str]) -> List[Dict[str, Any]]:
-        """Keyword-based analysis with hit-count confidence."""
-        hits = {}
+        """
+        Keyword-based analysis with realistic confidence based on hit count.
+        Confidence ranges from 0.50 to 0.90, never reaching 1.0.
+        This distinguishes keyword matches from true NLI matches.
+        """
+        hit_counts = {}
         for chunk in chunks:
             chunk_lower = chunk.lower()
             for clause_type, keywords in KEYWORD_MAP.items():
                 for kw in keywords:
                     if kw in chunk_lower and _is_valid_match(chunk_lower, kw, clause_type):
-                        hits[clause_type] = hits.get(clause_type, 0) + 1
+                        hit_counts[clause_type] = hit_counts.get(clause_type, 0) + 1
         
+        # ✅ Realistic confidence: base 0.50 + 0.04 per distinct keyword hit, capped at 0.90
         results = []
-        for clause_type, count in hits.items():
-            confidence = min(0.5 + (count * 0.03), 0.92)  # Range: 0.53 - 0.92
+        for clause_type, hit_count in hit_counts.items():
+            confidence = min(0.50 + (hit_count * 0.04), 0.90)
             results.append({"type": clause_type, "confidence": round(confidence, 2)})
+        
         return results
     
     def _analyze_with_nli(self, chunks: List[str]) -> List[Dict[str, Any]]:

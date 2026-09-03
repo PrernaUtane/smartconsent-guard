@@ -8,7 +8,6 @@
  * - Multi-layered security: Heuristic → Google Safe Browsing → VirusTotal
  */
 
-// ✅ FIXED: Use 127.0.0.1 instead of localhost
 const BACKEND_URL = "http://127.0.0.1:8000";
 const RISK_THRESHOLD = 60;
 
@@ -113,8 +112,9 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       // Store the blocked URL for "Enter Anyway" recovery
       await chrome.storage.session.set({ [`blockedUrl_${tabId}`]: url });
 
+      // ✅ FIXED: Correct path to warning.html
       const warningUrl =
-        chrome.runtime.getURL("warning.html") +
+        chrome.runtime.getURL("warning/warning.html") +
         `?url=${encodeURIComponent(url)}` +
         `&score=${riskScore}` +
         `&reasons=${encodeURIComponent(JSON.stringify(reasons))}` +

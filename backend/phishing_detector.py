@@ -1,10 +1,11 @@
 # phishing_detector.py
-# Enhanced heuristic engine – with higher penalty for free hosting + scam keywords
+# Enhanced heuristic engine – with registrable domain matching for false positive prevention
 
 import re
 from urllib.parse import urlparse
 
 # ✅ Legitimate domains that should never be flagged as phishing
+# These are registrable domains (e.g., "amazon.com" matches "www.amazon.com" via registrable domain matching)
 LEGITIMATE_DOMAINS = {
     "amazon.com", "paypal.com", "google.com", "github.com",
     "microsoft.com", "apple.com", "facebook.com", "netflix.com",
@@ -43,7 +44,7 @@ SUSPICIOUS_TLDS = [
     '.ddns.net', '.no-ip.org', '.duckdns.org', '.dynu.net', '.freeddns.org',
     '.hopto.org', '.zapto.org', '.sytes.net', '.myftp.org',
     '.bit.ly', '.tinyurl.com', '.shorturl.at', '.is.gd', '.tiny.cc',
-    # Free hosting subdomains
+    # Free hosting subdomains (duplicated for safety)
     '.pages.dev', '.web.app', '.firebaseapp.com', '.workers.dev',
     '.github.io', '.netlify.app', '.vercel.app', '.herokuapp.com'
 ]
@@ -68,8 +69,17 @@ def detect(url):
     scheme = parsed.scheme
     domain_lower = domain.lower()
 
-    # ✅ Skip phishing checks for legitimate domains
-    if domain_lower in LEGITIMATE_DOMAINS:
+    # ✅ Extract registrable domain (e.g., "amazon.com" from "www.amazon.com")
+    def get_registrable_domain(domain_lower):
+        parts = domain_lower.split('.')
+        if len(parts) >= 2:
+            return '.'.join(parts[-2:])  # Last two parts: example.com
+        return domain_lower
+
+    registrable_domain = get_registrable_domain(domain_lower)
+
+    # ✅ Skip phishing checks for legitimate domains (including subdomains)
+    if registrable_domain in LEGITIMATE_DOMAINS:
         return {
             "is_phishing": False,
             "risk_score": 0,

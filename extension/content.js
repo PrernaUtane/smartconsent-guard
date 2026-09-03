@@ -1,5 +1,6 @@
 // content.js
 // SmartConsent Guard - Terms & Conditions Extractor
+// Updated with demo mode to analyze ANY page
 
 const POLICY_KEYWORDS = [
     'privacy', 'policy', 'terms', 'conditions', 'tos', 'legal',
@@ -24,6 +25,26 @@ let scanned = false;
 function extractPolicyText() {
     if (scanned) return;
     scanned = true;
+
+    // ✅ DEMO MODE: Force analysis of the main page text on ANY page
+    // This ensures the extension works for your seminar demonstration
+    if (document.body) {
+        let bodyText = document.body.innerText.trim();
+        // Only send if there's enough text to analyze
+        if (bodyText.length > 200) {
+            console.log('✅ [SmartConsent] Demo mode: Sending body text for analysis.');
+            chrome.runtime.sendMessage({
+                type: 'POLICY_ANALYSIS_RESULT',
+                data: { 
+                    text: bodyText, 
+                    url: window.location.href 
+                }
+            });
+            return; // Exit early since we already sent the text
+        }
+    }
+
+    // --- Existing extraction strategies (fallback) ---
 
     let text = '';
 
@@ -69,7 +90,10 @@ function extractPolicyText() {
         // Send to background script
         chrome.runtime.sendMessage({
             type: 'POLICY_ANALYSIS_RESULT',
-            data: { text: text, url: window.location.href }
+            data: { 
+                text: text, 
+                url: window.location.href 
+            }
         });
     }
 }
