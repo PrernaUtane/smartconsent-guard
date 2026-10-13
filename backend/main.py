@@ -29,6 +29,7 @@ from pydantic import BaseModel, HttpUrl, field_validator
 from phishing_detector import detect
 from policy_analyzer import analyze
 from risk_engine import compute
+from qa_service import answer_policy_question, detect_dark_patterns, check_domain_breach
 
 # Try to import NLI service (optional)
 try:
@@ -110,6 +111,21 @@ class PolicyRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("text must not be empty")
         return v.strip()
+
+
+class PolicyQARequest(BaseModel):
+    question: str
+    policy_text: str = ""
+
+
+class DarkPatternRequest(BaseModel):
+    text: str = ""
+    url: str = ""
+
+
+class BreachCheckRequest(BaseModel):
+    domain: str
+    email: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +268,38 @@ def analyze_policy_enhanced(request: PolicyRequest):
             "clauses": [],
             "method": method
         }
+
+
+# ---------------------------------------------------------------------------
+# AI Policy Q&A, Dark Patterns & Breach Intelligence Endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/ask-policy", tags=["qa", "policy"])
+def ask_policy(request: PolicyQARequest):
+    """
+    Ask questions directly about terms & privacy policy using AI.
+    """
+    logger.info(f"Policy Q&A request: '{request.question[:60]}'")
+    return answer_policy_question(request.policy_text, request.question)
+
+
+@app.post("/detect-dark-patterns", tags=["policy", "dark-patterns"])
+def get_dark_patterns(request: DarkPatternRequest):
+    """
+    Detect dark patterns, hidden fees, and sneaky clauses in contracts.
+    """
+    logger.info(f"Detecting dark patterns ({len(request.text)} chars)")
+    return detect_dark_patterns(request.text)
+
+
+@app.post("/check-breach", tags=["security", "breach"])
+def check_breach(request: BreachCheckRequest):
+    """
+    Check domain or email against security breach intelligence.
+    """
+    logger.info(f"Checking breach intelligence for domain: {request.domain}")
+    return check_domain_breach(request.domain, request.email)
+
 
 
 # ---------------------------------------------------------------------------

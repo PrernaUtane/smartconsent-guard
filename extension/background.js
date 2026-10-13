@@ -154,8 +154,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         timestamp: Date.now(),
       },
     });
+
+    // Save to scan history
+    try {
+      const hostname = new URL(sender.tab.url).hostname;
+      chrome.storage.local.get(["scan_history"], (res) => {
+        let history = res.scan_history || [];
+        // Add or update domain entry
+        history = history.filter(h => h.hostname !== hostname);
+        history.unshift({
+          hostname,
+          url: sender.tab.url,
+          timestamp: Date.now(),
+          riskScore: message.data.risk_score || 0,
+          level: message.data.level || "LOW"
+        });
+        if (history.length > 50) history = history.slice(0, 50);
+        chrome.storage.local.set({ scan_history: history });
+      });
+    } catch (e) {}
+
     updateBadge(tabId, message.data.risk_score);
     sendResponse({ ok: true });
+    return true;
+  }
+
+  // content.js logs auto-declined cookie banner
+  if (message.type === "COOKIE_BANNER_DECLINED") {
+    chrome.storage.local.get(["cookie_declines_count", "declined_sites"], (res) => {
+      const count = (res.cookie_declines_count || 0) + 1;
+      const sites = res.declined_sites || [];
+      if (message.hostname && !sites.includes(message.hostname)) {
+        sites.unshift(message.hostname);
+      }
+      chrome.storage.local.set({
+        cookie_declines_count: count,
+        declined_sites: sites.slice(0, 30)
+      });
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // Clear audit history
+  if (message.type === "CLEAR_HISTORY") {
+    chrome.storage.local.set({ scan_history: [] }, () => {
+      sendResponse({ ok: true });
+    });
     return true;
   }
 

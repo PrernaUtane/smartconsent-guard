@@ -1,6 +1,5 @@
 // content.js
-// SmartConsent Guard - Terms & Conditions Extractor
-// Updated with demo mode to analyze ANY page
+// SmartConsent Guard — Terms & Conditions Extractor & Auto-Decline Engine
 
 const POLICY_KEYWORDS = [
     'privacy', 'policy', 'terms', 'conditions', 'tos', 'legal',
@@ -21,34 +20,174 @@ const HEADING_RE = /privacy|terms|conditions|legal|tos|cookie|consent|gdpr|ccpa/
 
 const DELAYS = [1000, 3000, 6000];
 let scanned = false;
+let cookieBannerHandled = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. AUTO-DECLINE COOKIE BANNERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REJECT_BUTTON_SELECTORS = [
+    '#onetrust-reject-all-handler',
+    '#CybotCookiebotDialogBodyButtonDecline',
+    '#didomi-notice-disagree-button',
+    '.qc-cmp2-footer .qc-cmp2-buttons-desktop button:first-child',
+    '[data-testid*="reject" i]',
+    '[aria-label*="reject all" i]',
+    '[aria-label*="decline" i]',
+    'button[id*="reject" i]',
+    'button[class*="reject" i]',
+    'button[id*="decline" i]',
+    'button[class*="decline" i]',
+    '.cm__btn--reject',
+    '.klaro .cn-decline'
+];
+
+async function autoDeclineCookieBanner() {
+    if (cookieBannerHandled) return;
+
+    // Check if auto-decline is enabled in storage (default: true)
+    try {
+        const settings = await chrome.storage.local.get(['auto_decline_cookies']);
+        if (settings.auto_decline_cookies === false) return;
+    } catch (e) {
+        // Continue if storage query fails
+    }
+
+    // Check specific known selector buttons
+    for (const selector of REJECT_BUTTON_SELECTORS) {
+        const btn = document.querySelector(selector);
+        if (btn && btn.offsetParent !== null && !btn.disabled) {
+            console.log('🛡️ [SmartConsent] Auto-declining cookies via selector:', selector);
+            btn.click();
+            cookieBannerHandled = true;
+            notifyDeclineSuccess('Non-essential cookies auto-declined.');
+            recordDeclineEvent();
+            return;
+        }
+    }
+
+    // Generic heuristic search across visible buttons in banner/dialog containers
+    const bannerContainers = document.querySelectorAll(
+        '[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [role="dialog"], [aria-modal="true"]'
+    );
+
+    for (const container of bannerContainers) {
+        if (container.offsetParent === null) continue; // skip hidden
+        const buttons = container.querySelectorAll('button, a[role="button"], input[type="button"]');
+        for (const btn of buttons) {
+            const label = (btn.textContent || btn.value || '').trim().toLowerCase();
+            if (
+                label.includes('reject all') ||
+                label.includes('decline all') ||
+                label.includes('reject non-essential') ||
+                label.includes('only necessary') ||
+                label.includes('necessary only') ||
+                label.includes('refuse all') ||
+                (label === 'decline' || label === 'reject' || label === 'deny')
+            ) {
+                console.log('🛡️ [SmartConsent] Auto-declining cookies via text match:', label);
+                btn.click();
+                cookieBannerHandled = true;
+                notifyDeclineSuccess(`Auto-declined cookies (${label})`);
+                recordDeclineEvent();
+                return;
+            }
+        }
+    }
+}
+
+function notifyDeclineSuccess(text) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: rgba(15, 23, 42, 0.95);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        font-weight: 500;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+    `;
+    toast.innerHTML = `<span>🛡️</span><span><strong>SmartConsent:</strong> ${text}</span>`;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+function recordDeclineEvent() {
+    chrome.runtime.sendMessage({
+        type: 'COOKIE_BANNER_DECLINED',
+        url: window.location.href,
+        hostname: window.location.hostname,
+        timestamp: Date.now()
+    }).catch(() => {});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. IN-PAGE SNEAKY CLAUSE HIGHLIGHTER
+// ─────────────────────────────────────────────────────────────────────────────
+
+function highlightSneakyClauses() {
+    const riskyTerms = [
+        { term: /binding\s+arbitration|waive\s+right\s+to\s+sue/gi, label: 'Forced Arbitration', color: '#f43f5e' },
+        { term: /auto-renew|recurring\s+charge|automatically\s+renew/gi, label: 'Auto-Renewal Trap', color: '#f59e0b' },
+        { term: /sell\s+(?:your\s+)?personal|data\s+brokers/gi, label: 'Data Resale', color: '#f43f5e' },
+        { term: /disclaim\s+all\s+warranties|as[\s-]is\s+and\s+as[\s-]available/gi, label: 'Total Liability Disclaimer', color: '#8b5cf6' }
+    ];
+
+    let count = 0;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodesToReplace = [];
+
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.nodeValue || node.parentElement.tagName === 'SCRIPT' || node.parentElement.tagName === 'STYLE') continue;
+        for (const item of riskyTerms) {
+            if (item.term.test(node.nodeValue)) {
+                nodesToReplace.push({ node, item });
+                break;
+            }
+        }
+    }
+
+    for (const { node, item } of nodesToReplace) {
+        if (!node.parentElement) continue;
+        const span = document.createElement('span');
+        span.style.backgroundColor = `${item.color}33`;
+        span.style.borderBottom = `2px solid ${item.color}`;
+        span.style.borderRadius = '3px';
+        span.style.padding = '1px 3px';
+        span.title = `SmartConsent Guard: ${item.label}`;
+        span.textContent = node.nodeValue;
+        node.parentElement.replaceChild(span, node);
+        count++;
+    }
+
+    notifyDeclineSuccess(`Highlighted ${count} risky clause passage(s) on this page.`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. TERMS & POLICY EXTRACTION
+// ─────────────────────────────────────────────────────────────────────────────
 
 function extractPolicyText() {
     if (scanned) return;
     scanned = true;
 
-    // ✅ DEMO MODE: Force analysis of the main page text on ANY page
-    // This ensures the extension works for your seminar demonstration
-    if (document.body) {
-        let bodyText = document.body.innerText.trim();
-        // Only send if there's enough text to analyze
-        if (bodyText.length > 200) {
-            console.log('✅ [SmartConsent] Demo mode: Sending body text for analysis.');
-            chrome.runtime.sendMessage({
-                type: 'POLICY_ANALYSIS_RESULT',
-                data: { 
-                    text: bodyText, 
-                    url: window.location.href 
-                }
-            });
-            return; // Exit early since we already sent the text
-        }
-    }
-
-    // --- Existing extraction strategies (fallback) ---
-
+    // Check dedicated sections
     let text = '';
-
-    // Strategy 1: Find dedicated sections
     for (const selector of SECTION_SELECTORS) {
         const elements = document.querySelectorAll(selector);
         for (const el of elements) {
@@ -59,7 +198,7 @@ function extractPolicyText() {
         }
     }
 
-    // Strategy 2: Find headings with legal terms
+    // Check headings
     if (text.length < 200) {
         const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
         for (const heading of headings) {
@@ -73,47 +212,35 @@ function extractPolicyText() {
         }
     }
 
-    // Strategy 3: URL fallback
-    if (text.length < 100) {
-        const url = window.location.href.toLowerCase();
-        if (/\/privacy|\/terms|\/legal|\/policy|\/tos|\/cookie|\/agreement/.test(url)) {
-            const bodyText = document.body?.textContent?.trim() || '';
-            if (bodyText.length > 500) {
-                text = bodyText;
-            }
+    // URL fallback or whole body fallback
+    if (text.length < 100 && document.body) {
+        const bodyText = document.body.innerText?.trim() || '';
+        if (bodyText.length > 150) {
+            text = bodyText;
         }
     }
 
-    // Validate and send
-    if (text.length > 100 && looksLegal(text)) {
-        text = text.replace(/\s+/g, ' ').trim();
-        // Send to background script
+    if (text.length > 80) {
+        const cleanText = text.replace(/\s+/g, ' ').trim().substring(0, 15000);
         chrome.runtime.sendMessage({
             type: 'POLICY_ANALYSIS_RESULT',
             data: { 
-                text: text, 
+                text: cleanText, 
                 url: window.location.href 
             }
-        });
+        }).catch(() => {});
     }
 }
 
-function looksLegal(text) {
-    let keywordCount = 0;
-    const lowerText = text.toLowerCase();
-    for (const keyword of POLICY_KEYWORDS) {
-        if (lowerText.includes(keyword)) {
-            keywordCount++;
-        }
-    }
-    return keywordCount >= 2;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. SCHEDULE TASKS & LISTENERS
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Start scanning with delays
 let attempt = 0;
 function scheduleScan() {
     if (attempt < DELAYS.length) {
         setTimeout(() => {
+            autoDeclineCookieBanner();
             extractPolicyText();
             attempt++;
             scheduleScan();
@@ -122,12 +249,23 @@ function scheduleScan() {
 }
 scheduleScan();
 
-// Listen for popup requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'getPolicyText') {
         scanned = false;
         extractPolicyText();
         sendResponse({ success: true });
+        return true;
+    }
+    if (message.action === 'HIGHLIGHT_CLAUSES') {
+        highlightSneakyClauses();
+        sendResponse({ success: true });
+        return true;
+    }
+    if (message.action === 'TRIGGER_AUTO_DECLINE') {
+        cookieBannerHandled = false;
+        autoDeclineCookieBanner();
+        sendResponse({ success: true });
+        return true;
     }
     return true;
 });

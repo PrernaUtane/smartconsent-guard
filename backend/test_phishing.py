@@ -1,5 +1,7 @@
-# test_phishing.py
-# Purpose: Test the phishing detection engine
+import sys
+import io
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 from phishing_detector import detect
 

@@ -7,49 +7,350 @@
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-<div class="container">
-    <header class="header">
-        <div class="header-left"><span class="logo-icon">🛡️</span><span class="logo-text">SmartConsent</span></div>
-        <div class="header-right"><span class="badge" id="riskBadge">LOW</span></div>
-    </header>
-    <div class="site-info">
-        <span class="site-label">Current Site</span>
-        <span class="site-url" id="siteUrl">loading...</span>
-    </div>
-    <div class="gauge-container">
-        <div class="gauge-ring">
-            <svg viewBox="0 0 120 120" class="ring-svg">
-                <circle cx="60" cy="60" r="54" class="ring-bg"/>
-                <circle cx="60" cy="60" r="54" class="ring-fg" id="riskRing"/>
-            </svg>
-            <div class="gauge-center">
-                <span class="gauge-score" id="riskScore">-</span>
-                <span class="gauge-label">RISK</span>
+<div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+        <div class="brand">
+            <span class="brand-shield">🛡️</span>
+            <div>
+                <h1 class="brand-title">SmartConsent <span class="brand-badge">GUARD</span></h1>
+                <div class="current-site-row">
+                    <span class="status-dot online" id="serverStatusDot" title="Backend connected"></span>
+                    <span class="current-site-text" id="siteUrl">loading site...</span>
+                </div>
             </div>
         </div>
-        <div class="gauge-level" id="riskLevel">—</div>
-    </div>
-    <div class="explanation-box">
-        <p class="explanation-text" id="explanationText">Analyzing site...</p>
-    </div>
-    <div class="clauses-section">
-        <div class="section-header">
-            <span class="section-title">📋 Detected Clauses</span>
-            <span class="section-badge" id="clauseCount">0</span>
+        <div class="header-status">
+            <span class="risk-pill badge-low" id="riskBadge">LOW RISK</span>
         </div>
-        <div class="clauses-list" id="clausesList">
-            <div class="clause-empty">No risky clauses detected</div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-tab="tab-overview" id="btnTabOverview">
+            <span class="tab-icon">🛡️</span>
+            <span class="tab-text">Overview</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-summary" id="btnTabSummary">
+            <span class="tab-icon">📝</span>
+            <span class="tab-text">Summary</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-cookies" id="btnTabCookies">
+            <span class="tab-icon">🍪</span>
+            <span class="tab-text">Cookies</span>
+            <span class="nav-badge" id="cookieNavCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-clauses" id="btnTabClauses">
+            <span class="tab-icon">⚠️</span>
+            <span class="tab-text">Traps</span>
+            <span class="nav-badge alert" id="trapNavCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-qa" id="btnTabQa">
+            <span class="tab-icon">🤖</span>
+            <span class="tab-text">AI Q&A</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-breach" id="btnTabBreach">
+            <span class="tab-icon">🔓</span>
+            <span class="tab-text">Breaches</span>
+        </button>
+        <button class="nav-tab" data-tab="tab-history" id="btnTabHistory">
+            <span class="tab-icon">📄</span>
+            <span class="tab-text">Reports</span>
+        </button>
+    </nav>
+
+    <!-- Tab Panels Container -->
+    <main class="tabs-content">
+        <!-- 1. OVERVIEW TAB -->
+        <section class="tab-panel active" id="tab-overview">
+            <div class="gauge-card">
+                <div class="gauge-ring-wrapper">
+                    <svg viewBox="0 0 120 120" class="ring-svg">
+                        <circle cx="60" cy="60" r="52" class="ring-bg"/>
+                        <circle cx="60" cy="60" r="52" class="ring-fg" id="riskRing"/>
+                    </svg>
+                    <div class="gauge-center">
+                        <span class="gauge-score" id="riskScore">0</span>
+                        <span class="gauge-caption">RISK INDEX</span>
+                    </div>
+                </div>
+                <div class="gauge-meta">
+                    <div class="meta-level-row">
+                        <span class="meta-label">Verdict:</span>
+                        <span class="meta-verdict safe" id="riskLevel">SAFE SITE</span>
+                    </div>
+                    <p class="explanation-text" id="explanationText">Analyzing platform safety and contractual integrity...</p>
+                    <div class="meta-tags-row" id="quickThreatTags">
+                        <span class="tag-pill tag-phishing" id="phishingTag">SSL Secure</span>
+                        <span class="tag-pill tag-method" id="analysisMethodTag">Heuristic & NLI</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detected Clauses Summary -->
+            <div class="card-section">
+                <div class="section-title-row">
+                    <span class="section-title">📋 Contractual Semantics</span>
+                    <span class="pill-count" id="clauseCount">0 detected</span>
+                </div>
+                <div class="clauses-list" id="clausesList">
+                    <div class="empty-state">No high-risk clauses flagged on this platform.</div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-grid">
+                <button class="btn btn-primary" id="highlightOnPageBtn">
+                    <span>🔍</span> Highlight On Page
+                </button>
+                <button class="btn btn-allow" id="allowBtn">
+                    <span>✅</span> Whitelist
+                </button>
+                <button class="btn btn-block" id="blockBtn">
+                    <span>🚫</span> Block Site
+                </button>
+            </div>
+        </section>
+
+        <!-- 2. PLAIN-ENGLISH SUMMARY TAB -->
+        <section class="tab-panel" id="tab-summary">
+            <div class="scorecard-grid">
+                <div class="score-card">
+                    <span class="score-title">Privacy Grade</span>
+                    <span class="score-letter" id="privacyGrade">A</span>
+                    <span class="score-sub" id="privacyGradeLabel">Strong Protection</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-title">Data Monetization</span>
+                    <span class="score-status safe" id="dataSaleStatus">No Selling</span>
+                    <span class="score-sub">Third-Party Brokers</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-title">Legal Recourse</span>
+                    <span class="score-status safe" id="arbitrationStatus">Court Intact</span>
+                    <span class="score-sub">Arbitration Terms</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-title">Auto-Billing</span>
+                    <span class="score-status safe" id="billingTrapStatus">No Trap</span>
+                    <span class="score-sub">Continuous Service</span>
+                </div>
+            </div>
+
+            <div class="card-section">
+                <div class="section-title-row">
+                    <span class="section-title">💡 Plain-English TL;DR</span>
+                    <button class="btn-text-copy" id="copySummaryBtn">📋 Copy</button>
+                </div>
+                <div class="summary-body" id="summaryContent">
+                    <div class="summary-bullet">
+                        <span class="bullet-icon">🔒</span>
+                        <div>
+                            <strong>Data Ownership:</strong>
+                            <p id="sumDataOwnership">Personal data collection is subject to stated security practices.</p>
+                        </div>
+                    </div>
+                    <div class="summary-bullet">
+                        <span class="bullet-icon">👁️</span>
+                        <div>
+                            <strong>Tracking & Telemetry:</strong>
+                            <p id="sumTracking">Standard session cookies and performance telemetry observed.</p>
+                        </div>
+                    </div>
+                    <div class="summary-bullet">
+                        <span class="bullet-icon">⚖️</span>
+                        <div>
+                            <strong>Dispute Resolution:</strong>
+                            <p id="sumDisputes">Check for binding arbitration and class action waivers in full terms.</p>
+                        </div>
+                    </div>
+                    <div class="summary-bullet">
+                        <span class="bullet-icon">🗑️</span>
+                        <div>
+                            <strong>Data Erasure:</strong>
+                            <p id="sumDeletion">Account deletion is typically handled via profile settings or privacy email.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. COOKIE & TRACKER ANALYZER TAB -->
+        <section class="tab-panel" id="tab-cookies">
+            <!-- Cookie Blocker Status Bar -->
+            <div class="toggle-card">
+                <div class="toggle-info">
+                    <div class="toggle-title-row">
+                        <span class="toggle-icon">🛡️</span>
+                        <strong>Auto-Decline Cookie Banners</strong>
+                    </div>
+                    <p class="toggle-desc">Automatically clicks "Reject All" on OneTrust, Cookiebot, and CMP banners.</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="toggleAutoDecline" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <!-- Cookie Stats -->
+            <div class="cookie-stat-cards">
+                <div class="cookie-box">
+                    <span class="cookie-box-num" id="totalCookiesCount">0</span>
+                    <span class="cookie-box-lbl">Total Cookies</span>
+                </div>
+                <div class="cookie-box">
+                    <span class="cookie-box-num text-safe" id="firstPartyCookiesCount">0</span>
+                    <span class="cookie-box-lbl">1st-Party</span>
+                </div>
+                <div class="cookie-box">
+                    <span class="cookie-box-num text-warn" id="thirdPartyCookiesCount">0</span>
+                    <span class="cookie-box-lbl">3rd-Party</span>
+                </div>
+            </div>
+
+            <!-- Cookie List -->
+            <div class="card-section">
+                <div class="section-title-row">
+                    <span class="section-title">🍪 Active Cookies on Site</span>
+                    <button class="btn-clear-cookies" id="clearCookiesBtn">🗑️ Clear Tracking</button>
+                </div>
+                <div class="cookie-list" id="cookiesList">
+                    <div class="empty-state">No active cookies found for this domain.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. DARK PATTERNS & SNEAKY CLAUSES TAB -->
+        <section class="tab-panel" id="tab-clauses">
+            <div class="traps-header-box">
+                <div class="traps-count-badge" id="trapsCountBadge">0 TRAPS</div>
+                <div>
+                    <h3 class="traps-box-title">Deceptive Contract Clauses</h3>
+                    <p class="traps-box-sub">Identifies hidden traps, recurring billing clauses, and legal waivers.</p>
+                </div>
+            </div>
+
+            <div class="traps-list" id="darkPatternsList">
+                <div class="empty-state">
+                    <span>✨</span>
+                    <p>No aggressive dark patterns or hidden traps detected in this platform's agreement.</p>
+                </div>
+            </div>
+
+            <div class="action-grid mt-12">
+                <button class="btn btn-primary" id="btnHighlightTraps">
+                    <span>🔎</span> Highlight Traps on Page
+                </button>
+            </div>
+        </section>
+
+        <!-- 5. AI POLICY CHAT & Q&A TAB -->
+        <section class="tab-panel" id="tab-qa">
+            <div class="chat-header">
+                <span class="chat-title">Ask Policy Assistant</span>
+                <span class="chat-badge">AI Powered</span>
+            </div>
+
+            <!-- Suggested prompts -->
+            <div class="prompt-chips" id="promptChips">
+                <button class="chip-btn" data-query="Do they sell my personal data to advertisers?">💸 Sell Data?</button>
+                <button class="chip-btn" data-query="Can I delete my account and data easily?">🗑️ Delete Account?</button>
+                <button class="chip-btn" data-query="Are there auto-renewing subscription fees or cancellation traps?">💳 Auto-Renew Fees?</button>
+                <button class="chip-btn" data-query="Do I waive my right to sue in court or join a class action?">⚖️ Arbitration?</button>
+            </div>
+
+            <!-- Chat message container -->
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-msg bot-msg">
+                    <div class="msg-avatar">🤖</div>
+                    <div class="msg-bubble">
+                        Hello! Ask me any question about this site's Privacy Policy, Terms of Service, or contractual clauses.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat input row -->
+            <div class="chat-input-row">
+                <input type="text" id="chatInput" placeholder="Ask about privacy, refunds, data selling..." autocomplete="off">
+                <button id="chatSendBtn" class="chat-send-btn">
+                    <span>➤</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 6. BREACH INTELLIGENCE TAB -->
+        <section class="tab-panel" id="tab-breach">
+            <div class="breach-card">
+                <div class="breach-header">
+                    <span class="breach-icon" id="breachIcon">🛡️</span>
+                    <div>
+                        <h3 class="breach-domain" id="breachDomainName">Domain Audit</h3>
+                        <span class="breach-tag" id="breachScoreBadge">Security Score: 90/100</span>
+                    </div>
+                </div>
+                <p class="breach-message" id="breachStatusMsg">Checking security intelligence database...</p>
+            </div>
+
+            <!-- Email Breach Lookup -->
+            <div class="card-section">
+                <div class="section-title-row">
+                    <span class="section-title">🔍 Check Account Breach History</span>
+                </div>
+                <div class="email-check-row">
+                    <input type="email" id="emailCheckInput" placeholder="Enter your email to check...">
+                    <button class="btn btn-secondary" id="emailCheckBtn">Check</button>
+                </div>
+                <div class="email-result-box hidden" id="emailResultBox">
+                    <p id="emailResultText"></p>
+                </div>
+            </div>
+
+            <div class="card-section">
+                <span class="section-title">🔐 Recommended Safety Measures</span>
+                <ul class="security-tips-list">
+                    <li>Use a password manager with 16+ character unique passphrases.</li>
+                    <li>Always enable Two-Factor Authentication (2FA) with an Authenticator app.</li>
+                    <li>Never reuse banking or primary email passwords across other platforms.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 7. HISTORY & PDF EXPORT TAB -->
+        <section class="tab-panel" id="tab-history">
+            <div class="report-export-card">
+                <div class="report-meta">
+                    <strong>Comprehensive Security Audit</strong>
+                    <p>Export a formal PDF compliance & privacy assessment report for this platform.</p>
+                </div>
+                <button class="btn btn-export-pdf" id="btnGeneratePdf">
+                    <span>📥</span> Export PDF Report
+                </button>
+            </div>
+
+            <div class="card-section">
+                <div class="section-title-row">
+                    <span class="section-title">📜 Scanned Sites Log</span>
+                    <button class="btn-text-copy" id="btnClearHistory">Clear Log</button>
+                </div>
+                <div class="history-list" id="historyList">
+                    <div class="empty-state">No scan history recorded yet.</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-left">
+            <span class="indicator-dot online"></span>
+            <span class="footer-status">Protected by SmartConsent</span>
         </div>
-    </div>
-    <div class="actions">
-        <button class="btn btn-allow" id="allowBtn">✅ Allow Site</button>
-        <button class="btn btn-block" id="blockBtn">🚫 Block Site</button>
-    </div>
-    <footer class="footer">
-        <span class="footer-text">🔄 Powered by AI</span>
-        <span class="footer-version">v1.0.0</span>
+        <div class="footer-right">
+            <span class="version-tag">v2.0 Modular</span>
+        </div>
     </footer>
 </div>
+
 <script src="popup.js"></script>
 </body>
 </html>
