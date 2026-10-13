@@ -161,7 +161,7 @@ def detect(url):
     risk_score = min(risk_score, 100)
 
     return {
-        "is_phishing": risk_score > 60,
+        "is_phishing": risk_score >=60,
         "risk_score": risk_score,
         "reasons": reasons
     }
